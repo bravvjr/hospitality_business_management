@@ -1,8 +1,9 @@
-# Runtime dependencies (pinned after local resolution).
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-sqlalchemy[asyncio]==2.0.43
+# Runtime dependencies. Pinned to versions that ship cp314 wheels so the
+# Docker image (python:3.14-slim) installs binaries only — no source builds.
+fastapi==0.141.1
+uvicorn==0.52.4
+sqlalchemy[asyncio]==2.0.52
 asyncpg==0.31.0
-alembic==1.14.0
+alembic==1.19.1
 pydantic==2.13.5
-pydantic-settings==2.7.0
+pydantic-settings==2.15.0

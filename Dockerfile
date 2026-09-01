@@ -3,17 +3,17 @@ FROM python:3.14-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
 
-# build-essential covers any packages without cp314 wheels; curl for healthchecks.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential curl \
-    && rm -rf /var/lib/apt/lists/*
-
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
+# Wheels-only: dependencies are pinned to versions with cp314 wheels, so pip
+# never compiles from source. If a wheel is ever missing, the build fails fast
+# with a clear error instead of hanging on a Rust/C compile.
+RUN pip install --upgrade pip \
+    && pip install --only-binary=:all: -r requirements.txt
 
 COPY . .
 
