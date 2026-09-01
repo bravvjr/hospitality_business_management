@@ -24,6 +24,19 @@ class Settings(BaseSettings):
     )
     db_echo: bool = False
 
+    # Auth (ADR-003). Override JWT_SECRET_KEY in every non-local environment.
+    jwt_secret_key: str = Field(
+        default="dev-only-change-me",
+        description="HS256 signing secret; must be overridden outside local dev.",
+    )
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60
+    refresh_token_expire_days: int = 7
+    cookie_secure: bool = False
+    cookie_samesite: str = "lax"
+    access_token_cookie_name: str = "access_token"
+    refresh_token_cookie_name: str = "refresh_token"
+
 
 @lru_cache
 def get_settings() -> Settings:

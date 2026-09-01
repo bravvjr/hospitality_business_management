@@ -51,7 +51,14 @@ docker compose up --build
 ```
 
 This starts PostgreSQL (persisted on a named volume) and the API. The API container
-applies Alembic migrations on startup, then serves on http://localhost:8000.
+applies Alembic migrations on startup, then serves on http://localhost:8000 with
+**hot reload** — edits under `app/` are picked up automatically (no rebuild needed).
+
+Rebuild the image only when `requirements.txt` or the `Dockerfile` changes:
+
+```bash
+docker compose up --build
+```
 
 - API docs: http://localhost:8000/docs
 - Liveness: http://localhost:8000/api/v1/health/live

@@ -33,6 +33,7 @@ jobs:
     env:
       ENVIRONMENT: ci
       DATABASE_URL: postgresql+asyncpg://hbm:hbm@localhost:5432/hbm
+      JWT_SECRET_KEY: ci-test-secret
 
     steps:
       - name: Checkout
