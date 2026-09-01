@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.modules.auth.models import Membership, Role, User
+from app.modules.auth.models import Membership, Permission, Role, User
 from app.modules.tenant.models import Tenant
 
 
@@ -46,6 +46,46 @@ class AuthRepository:
             .order_by(Membership.created_at.asc())
         )
         return list(result.scalars().all())
+
+    async def list_tenant_memberships(self, tenant_id: uuid.UUID) -> list[Membership]:
+        result = await self._session.execute(
+            select(Membership)
+            .options(selectinload(Membership.role), selectinload(Membership.user))
+            .where(Membership.tenant_id == tenant_id)
+            .order_by(Membership.created_at.asc())
+        )
+        return list(result.scalars().all())
+
+    async def get_membership_by_id(self, membership_id: uuid.UUID) -> Membership | None:
+        result = await self._session.execute(
+            select(Membership)
+            .options(selectinload(Membership.role), selectinload(Membership.user))
+            .where(Membership.id == membership_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def count_memberships_with_role(self, *, tenant_id: uuid.UUID, role_key: str) -> int:
+        result = await self._session.execute(
+            select(Membership)
+            .join(Role)
+            .where(Membership.tenant_id == tenant_id, Role.key == role_key)
+        )
+        return len(list(result.scalars().all()))
+
+    async def list_roles(self) -> list[Role]:
+        result = await self._session.execute(select(Role).order_by(Role.name.asc()))
+        return list(result.scalars().all())
+
+    async def get_permission_keys_for_role(self, role_key: str) -> set[str]:
+        result = await self._session.execute(
+            select(Permission.key)
+            .join(Role.permissions)
+            .where(Role.key == role_key)
+        )
+        return set(result.scalars().all())
+
+    async def delete(self, entity: Membership) -> None:
+        await self._session.delete(entity)
 
     async def get_tenant(self, tenant_id: uuid.UUID) -> Tenant | None:
         result = await self._session.execute(select(Tenant).where(Tenant.id == tenant_id))

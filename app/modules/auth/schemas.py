@@ -61,3 +61,22 @@ class SessionRead(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+
+
+class StaffCreateRequest(BaseModel):
+    email: EmailStr
+    password: str | None = Field(default=None, min_length=8, max_length=128)
+    role_key: str = Field(min_length=1, max_length=50)
+
+
+class StaffUpdateRequest(BaseModel):
+    role_key: str = Field(min_length=1, max_length=50)
+
+
+class StaffStatusUpdateRequest(BaseModel):
+    status: str = Field(pattern="^(active|inactive)$")
+
+
+class StaffMemberRead(BaseModel):
+    membership: MembershipRead
+    user: UserRead

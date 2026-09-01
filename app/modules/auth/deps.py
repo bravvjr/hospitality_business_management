@@ -102,6 +102,25 @@ async def get_tenant_session(
     yield session
 
 
+def require_permission(*required_permissions: str):
+    required = frozenset(required_permissions)
+
+    async def _require_permission(
+        context: Annotated[TenantContext, Depends(get_tenant_context)],
+        session: Annotated[AsyncSession, Depends(get_session)],
+    ) -> TenantContext:
+        repo = AuthRepository(session)
+        granted = await repo.get_permission_keys_for_role(context.role_key)
+        if not required.issubset(granted):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions",
+            )
+        return context
+
+    return _require_permission
+
+
 def require_role(*allowed_roles: str):
     allowed = set(allowed_roles)
 
