@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api.v1.router import api_router
+from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.db import engine
 

@@ -1,7 +1,11 @@
-"""Health endpoints: liveness (no dependencies) and readiness (checks the DB)."""
+"""System / ops endpoints: liveness and DB-backed readiness.
+
+These are cross-cutting operational probes, not a domain module.
+"""
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status as http_status
@@ -9,10 +13,20 @@ from starlette.responses import JSONResponse
 
 from app.core.config import get_settings
 from app.core.db import get_session
-from app.schemas.health import HealthStatus, ReadyStatus
 
-router = APIRouter(tags=["health"])
+router = APIRouter(tags=["system"])
 settings = get_settings()
+
+
+class HealthStatus(BaseModel):
+    status: str
+    service: str
+    environment: str
+
+
+class ReadyStatus(BaseModel):
+    status: str
+    database: str
 
 
 @router.get("/health/live", response_model=HealthStatus)

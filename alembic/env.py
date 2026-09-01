@@ -6,9 +6,10 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+import app.modules.tenant.models  # noqa: F401 — register models for autogenerate
 from alembic import context
 from app.core.config import get_settings
-from app.models import Base  # imports all models so metadata is complete
+from app.core.db import Base
 
 config = context.config
 

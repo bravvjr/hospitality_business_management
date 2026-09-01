@@ -59,8 +59,11 @@ Use these terms and honor these decisions (see the ADR page for full context):
   with an immutable per-line UoM snapshot (ADR-005).
 - **POS/payments:** one order/sale domain shared by POS and future online store; Cash +
   M-Pesa (Daraja). The async callback is the source of truth; credit idempotently (ADR-006).
-- **API architecture:** FastAPI application-factory + lifespan, layered
-  api → services → repositories → models/schemas/core; versioned under `/api/v1` (ADR-008).
+- **API architecture:** FastAPI application-factory + lifespan; **package-by-feature**
+  modules under `app/modules/<name>/`, each owning its `models`, `schemas`, `router`,
+  `service`, and `repository` (layering lives inside the module). Ops endpoints (health)
+  live in `app/api/system.py`. Versioned under `/api/v1` — a routing prefix, not a folder
+  (ADR-008).
 
 ## Running & testing
 

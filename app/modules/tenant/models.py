@@ -7,7 +7,7 @@ import uuid
 from sqlalchemy import ForeignKey, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin, UUIDMixin
+from app.core.db import Base, TimestampMixin, UUIDMixin
 
 
 class Tenant(UUIDMixin, TimestampMixin, Base):
@@ -20,12 +20,9 @@ class Tenant(UUIDMixin, TimestampMixin, Base):
     base_currency: Mapped[str] = mapped_column(String(3), nullable=False, default="KES")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
 
-    sub_tenants: Mapped[list["Tenant"]] = relationship(
-        back_populates="parent",
-    )
+    sub_tenants: Mapped[list["Tenant"]] = relationship(back_populates="parent")
     parent: Mapped["Tenant | None"] = relationship(
-        back_populates="sub_tenants",
-        remote_side="Tenant.id",
+        back_populates="sub_tenants", remote_side="Tenant.id"
     )
 
     def __repr__(self) -> str:  # pragma: no cover - convenience only

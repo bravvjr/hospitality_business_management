@@ -16,23 +16,33 @@ platform. Product context, requirements, and the accepted Architecture Decision 
 
 ## Project layout (ADR-008)
 
+Package-by-feature (vertical slices): each module under `app/modules/` owns its own
+models, schemas, router, service, and repository. Layering lives *inside* each module.
+API versioning is a routing concern (`/api/v1`), not a folder.
+
 ```
 app/
-  main.py              # create_app() factory + lifespan
+  main.py                  # create_app() factory + lifespan
   core/
-    config.py          # Pydantic settings (env-driven)
-    db.py              # async engine, session factory, get_session dependency
-  api/v1/
-    router.py          # v1 router aggregation
-    routes/health.py   # liveness + readiness endpoints
-  models/              # SQLAlchemy models (Base, Tenant)
-  schemas/             # Pydantic response models
-alembic/               # async migrations (env.py + versions/)
-scripts/entrypoint.sh  # migrate then launch (container entrypoint)
-tests/                 # pytest (unit + integration)
+    config.py              # Pydantic settings (env-driven)
+    db.py                  # async engine, session factory, Base + mixins, get_session
+  api/
+    router.py              # builds the /api/v1 router; mounts system + module routers
+    system.py              # liveness + readiness (ops endpoints, not a domain)
+  modules/
+    tenant/                # feature module
+      models.py            # SQLAlchemy models
+      schemas.py           # Pydantic schemas
+      # router.py / service.py / repository.py added as the module gains behavior
+alembic/                   # async migrations (env.py imports each module's models)
+scripts/entrypoint.sh      # migrate then launch (container entrypoint)
+tests/                     # pytest (unit + integration)
 Dockerfile
 docker-compose.yml
 ```
+
+New modules (e.g. `auth`, `inventory`, `pos`, `finance`) are added as
+`app/modules/<name>/`, mounted in `app/api/router.py`, and imported in `alembic/env.py`.
 
 ## Run with Docker (recommended)
 
