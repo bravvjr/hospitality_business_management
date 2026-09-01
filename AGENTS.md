@@ -27,8 +27,9 @@ in Notion. Read the relevant pages **before** implementing a feature:
 ## Current focus (backend)
 
 **Phase 1 — Foundation.** Completed in this repo: project structure, Docker/local dev,
-Postgres + migrations, health endpoints, GitHub Actions CI. **Next:** authentication
-and tenant context (ADR-003), then roles/permissions.
+Postgres + migrations, health endpoints, GitHub Actions CI, JWT auth + tenant context,
+staff management, permissions (`require_permission`), and staff account status.
+**Next:** inventory module.
 Update the Notion roadmap when a checklist item is done — do not duplicate the full
 checklist here.
 - **Architecture Decision Records (ADRs)**: https://app.notion.com/p/3cd89b75501c814fa389e77472d40d03

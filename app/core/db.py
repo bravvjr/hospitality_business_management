@@ -46,3 +46,13 @@ async def get_session() -> AsyncGenerator[AsyncSession]:
     """Request-scoped async session dependency."""
     async with SessionLocal() as session:
         yield session
+
+
+async def apply_tenant_context(session: AsyncSession, tenant_id: uuid.UUID) -> None:
+    """Set the per-transaction RLS tenant variable (ADR-002)."""
+    from sqlalchemy import text
+
+    await session.execute(
+        text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
+        {"tenant_id": str(tenant_id)},
+    )
