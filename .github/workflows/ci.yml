@@ -1,0 +1,63 @@
+# Backend CI (ADR-009): lint + unit/integration tests against Postgres.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: hbm
+          POSTGRES_PASSWORD: hbm
+          POSTGRES_DB: hbm
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hbm -d hbm"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      ENVIRONMENT: ci
+      DATABASE_URL: postgresql+asyncpg://hbm:hbm@localhost:5432/hbm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Ruff
+        run: ruff check app tests alembic
+
+      - name: Unit tests
+        run: pytest -m unit
+
+      - name: Apply migrations
+        run: alembic upgrade head
+
+      - name: Integration tests
+        run: pytest -m integration

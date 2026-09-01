@@ -21,7 +21,16 @@ in Notion. Read the relevant pages **before** implementing a feature:
 - **Project Hub** — high-level product context: https://app.notion.com/p/3cd89b75501c81708b90c53049b516a9
 - **Product Requirements & Functional Scope**: https://app.notion.com/p/3cd89b75501c81b3b92dca8d3253eedb
 - **Architecture — Initial Direction**: https://app.notion.com/p/3cd89b75501c817e9abbeaf2da79277b
-- **Development Roadmap & Agent Tasks** (phase checklists): https://app.notion.com/p/3cd89b75501c8114ad41cc437a8c1be2
+- **Development Roadmap & Agent Tasks** (phase checklists — **source of truth for progress**):
+  https://app.notion.com/p/3cd89b75501c8114ad41cc437a8c1be2
+
+## Current focus (backend)
+
+**Phase 1 — Foundation.** Completed in this repo: project structure, Docker/local dev,
+Postgres + migrations, health endpoints, GitHub Actions CI. **Next:** authentication
+and tenant context (ADR-003), then roles/permissions.
+Update the Notion roadmap when a checklist item is done — do not duplicate the full
+checklist here.
 - **Architecture Decision Records (ADRs)**: https://app.notion.com/p/3cd89b75501c814fa389e77472d40d03
 
 ## Repository scope
