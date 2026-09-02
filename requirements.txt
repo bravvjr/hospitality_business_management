@@ -1,0 +1,12 @@
+# Runtime dependencies. Pinned to versions that ship cp314 wheels so the
+# Docker image (python:3.14-slim) installs binaries only — no source builds.
+fastapi==0.141.1
+uvicorn==0.52.4
+sqlalchemy[asyncio]==2.0.52
+asyncpg==0.31.0
+alembic==1.19.1
+pydantic==2.13.5
+pydantic-settings==2.15.0
+argon2-cffi==25.1.0
+PyJWT==2.11.0
+email-validator==2.3.0

@@ -1,2 +1,121 @@
 # hospitality_business_management
+
 Small hospitality and food businesses often face a common challenge: the business may be generating revenue, but the owner does not always have a clear, real-time picture of where the money is going, what stock is available, which products are profitable, or how the business is performing.
+
+This repository is the **backend** for the Hospitality Business Management platform — a
+multi-tenant SaaS built to grow from a single business into an integrated hospitality
+platform. Product context, requirements, and the accepted Architecture Decision Records
+(ADRs) live in the project's Notion hub. The frontend (Next.js) lives in a separate repository.
+
+## Tech stack (ADR-001)
+
+- Python 3.14 · FastAPI · PostgreSQL
+- Async SQLAlchemy 2.0 (asyncpg) · Alembic
+- Pydantic v2 / pydantic-settings
+- Docker + Docker Compose for local development
+
+## Project layout (ADR-008)
+
+Package-by-feature (vertical slices): each module under `app/modules/` owns its own
+models, schemas, router, service, and repository. Layering lives *inside* each module.
+API versioning is a routing concern (`/api/v1`), not a folder.
+
+```
+app/
+  main.py                  # create_app() factory + lifespan
+  core/
+    config.py              # Pydantic settings (env-driven)
+    db.py                  # async engine, session factory, Base + mixins, get_session
+  api/
+    router.py              # builds the /api/v1 router; mounts system + module routers
+    system.py              # liveness + readiness (ops endpoints, not a domain)
+  modules/
+    tenant/                # feature module
+      models.py            # SQLAlchemy models
+      schemas.py           # Pydantic schemas
+      # router.py / service.py / repository.py added as the module gains behavior
+alembic/                   # async migrations (env.py imports each module's models)
+scripts/entrypoint.sh      # migrate then launch (container entrypoint)
+tests/                     # pytest (unit + integration)
+Dockerfile
+docker-compose.yml
+```
+
+New modules (e.g. `auth`, `inventory`, `pos`, `finance`) are added as
+`app/modules/<name>/`, mounted in `app/api/router.py`, and imported in `alembic/env.py`.
+
+## Run with Docker (recommended)
+
+```bash
+docker compose up --build
+```
+
+This starts PostgreSQL (persisted on a named volume) and the API. The API container
+applies Alembic migrations on startup, then serves on http://localhost:8000 with
+**hot reload** — edits under `app/` are picked up automatically (no rebuild needed).
+
+Rebuild the image only when `requirements.txt` or the `Dockerfile` changes:
+
+```bash
+docker compose up --build
+```
+
+- API docs: http://localhost:8000/docs
+- Liveness: http://localhost:8000/api/v1/health/live
+- Readiness (checks DB): http://localhost:8000/api/v1/health/ready
+
+## Run without Docker
+
+The app connects as a **non-owner** role (`hbm_app`) so PostgreSQL Row-Level
+Security is enforced (ADR-002); **migrations** run as the **owner** role (`hbm`).
+Create both once against your local Postgres:
+
+```sql
+-- as a superuser / owner:
+CREATE ROLE hbm LOGIN PASSWORD 'hbm';
+CREATE DATABASE hbm OWNER hbm;
+CREATE ROLE hbm_app LOGIN PASSWORD 'hbm_app' NOSUPERUSER NOBYPASSRLS;
+GRANT CONNECT ON DATABASE hbm TO hbm_app;
+GRANT USAGE ON SCHEMA public TO hbm_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE hbm IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO hbm_app;
+```
+
+```bash
+python -m venv .venv
+source .venv/bin/activate            # Windows: .venv\Scripts\activate
+pip install -r requirements-dev.txt
+
+cp .env.example .env                 # DATABASE_URL=app role, MIGRATION_DATABASE_URL=owner role
+alembic upgrade head                 # runs as the owner (MIGRATION_DATABASE_URL)
+uvicorn app.main:app --reload        # runs as the app role (DATABASE_URL)
+```
+
+With Docker Compose this is automatic — `docker/initdb/10-app-role.sh` creates
+`hbm_app` on first boot.
+
+## Migrations
+
+```bash
+alembic upgrade head                 # apply
+alembic revision --autogenerate -m "message"   # create a new migration
+alembic downgrade -1                 # roll back one
+```
+
+## Maintenance
+
+Prune expired refresh-token sessions periodically (cron / systemd timer):
+
+```bash
+python -m scripts.prune_refresh_sessions
+```
+
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest -m unit                       # fast, no database
+pytest                               # full suite (integration needs a database)
+```
+
+Integration tests read `DATABASE_URL`; point it at a running Postgres before running them.

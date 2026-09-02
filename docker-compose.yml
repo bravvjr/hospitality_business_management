@@ -1,0 +1,40 @@
+# Local development stack (ADR-002/003/005): API + Postgres as separate
+# services, Postgres persisted on a named volume. The API connects as a
+# non-owner role (hbm_app) so RLS is enforced; migrations run as the owner (hbm).
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hbm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hbm}
+      POSTGRES_DB: ${POSTGRES_DB:-hbm}
+      APP_DB_ROLE: ${APP_DB_ROLE:-hbm_app}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-hbm_app}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hbm} -d ${POSTGRES_DB:-hbm}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: local
+      # App runtime connects as the non-owner role (RLS enforced).
+      DATABASE_URL: postgresql+asyncpg://${APP_DB_ROLE:-hbm_app}:${APP_DB_PASSWORD:-hbm_app}@db:5432/${POSTGRES_DB:-hbm}
+      # Migrations run as the owner role.
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hbm}:${POSTGRES_PASSWORD:-hbm}@db:5432/${POSTGRES_DB:-hbm}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-only-change-me}
+    ports:
+      - "8000:8000"
+
+volumes:
+  pgdata:
