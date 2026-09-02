@@ -11,6 +11,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Integer,
     Numeric,
     String,
     Text,
@@ -55,6 +56,9 @@ class Product(UUIDMixin, TimestampMixin, Base):
     )
     # Reorder threshold in base units (NULL = no low-stock tracking).
     reorder_level_base: Mapped[Decimal | None] = mapped_column(Numeric(24, 6), nullable=True)
+    # Sell price in minor units (e.g. cents); NULL = not for sale / unset.
+    unit_price_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
 
     base_unit: Mapped["Unit"] = relationship()

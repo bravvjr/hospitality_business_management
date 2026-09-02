@@ -48,14 +48,27 @@ class AuthRepository:
         )
         return list(result.scalars().all())
 
-    async def list_tenant_memberships(self, tenant_id: uuid.UUID) -> list[Membership]:
+    async def list_tenant_memberships(
+        self, tenant_id: uuid.UUID, *, limit: int, offset: int
+    ) -> tuple[list[Membership], int]:
+        total = int(
+            (
+                await self._session.execute(
+                    select(func.count())
+                    .select_from(Membership)
+                    .where(Membership.tenant_id == tenant_id)
+                )
+            ).scalar_one()
+        )
         result = await self._session.execute(
             select(Membership)
             .options(selectinload(Membership.role), selectinload(Membership.user))
             .where(Membership.tenant_id == tenant_id)
             .order_by(Membership.created_at.asc())
+            .limit(limit)
+            .offset(offset)
         )
-        return list(result.scalars().all())
+        return list(result.scalars().all()), total
 
     async def get_membership_by_id(self, membership_id: uuid.UUID) -> Membership | None:
         result = await self._session.execute(

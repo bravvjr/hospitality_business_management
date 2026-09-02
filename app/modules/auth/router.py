@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.db import get_session
+from app.core.pagination import Page, Pagination, page_from
 from app.core.rate_limit import rate_limit
 from app.core.security import InvalidCredentialsError, InvalidTokenError
 from app.modules.auth.deps import (
@@ -226,13 +227,19 @@ async def list_roles(
     return await service.list_roles()
 
 
-@router.get("/staff", response_model=list[StaffMemberRead])
+@router.get("/staff", response_model=Page[StaffMemberRead])
 async def list_staff(
     context: StaffRead,
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
-) -> list[StaffMemberRead]:
+    pagination: Pagination,
+) -> Page[StaffMemberRead]:
     service = StaffService(session)
-    return await service.list_staff(tenant_id=context.tenant_id)
+    items, total = await service.list_staff(
+        tenant_id=context.tenant_id,
+        limit=pagination.limit,
+        offset=pagination.offset,
+    )
+    return page_from(items, total=total, pagination=pagination)
 
 
 @router.post("/staff", response_model=StaffMemberRead, status_code=status.HTTP_201_CREATED)

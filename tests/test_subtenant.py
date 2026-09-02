@@ -62,7 +62,9 @@ async def test_owner_creates_and_administers_sub_tenant(client):
     assert add.status_code == 201
     staff = await client.get("/api/v1/auth/staff", cookies=switched.cookies)
     # Only the child's own membership (the cashier) — the owner's membership is on HQ.
-    assert {m["membership"]["role"]["key"] for m in staff.json()} == {"cashier"}
+    assert {m["membership"]["role"]["key"] for m in staff.json()["items"]} == {
+        "cashier"
+    }
 
 
 @pytest.mark.integration

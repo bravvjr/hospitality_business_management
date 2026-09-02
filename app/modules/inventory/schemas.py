@@ -21,6 +21,8 @@ class ProductCreateRequest(BaseModel):
     sku: str | None = Field(default=None, max_length=100)
     category: str | None = Field(default=None, max_length=100)
     reorder_level_base: Decimal | None = Field(default=None, ge=0)
+    unit_price_minor: int | None = Field(default=None, ge=0)
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
 
 
 class ProductUpdateRequest(BaseModel):
@@ -28,6 +30,8 @@ class ProductUpdateRequest(BaseModel):
     sku: str | None = Field(default=None, max_length=100)
     category: str | None = Field(default=None, max_length=100)
     reorder_level_base: Decimal | None = Field(default=None, ge=0)
+    unit_price_minor: int | None = Field(default=None, ge=0)
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
     status: str | None = Field(default=None, pattern="^(active|inactive)$")
 
 
@@ -41,6 +45,8 @@ class ProductRead(BaseModel):
     category: str | None
     base_unit: UnitRead
     reorder_level_base: Decimal | None
+    unit_price_minor: int | None
+    currency: str | None
     status: str
     created_at: datetime
     updated_at: datetime

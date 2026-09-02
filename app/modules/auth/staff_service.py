@@ -28,9 +28,13 @@ class StaffService:
         self._session = session
         self._repo = AuthRepository(session)
 
-    async def list_staff(self, *, tenant_id: uuid.UUID) -> list[StaffMemberRead]:
-        memberships = await self._repo.list_tenant_memberships(tenant_id)
-        return [self._to_staff_read(m) for m in memberships]
+    async def list_staff(
+        self, *, tenant_id: uuid.UUID, limit: int, offset: int
+    ) -> tuple[list[StaffMemberRead], int]:
+        memberships, total = await self._repo.list_tenant_memberships(
+            tenant_id, limit=limit, offset=offset
+        )
+        return [self._to_staff_read(m) for m in memberships], total
 
     async def list_roles(self):
         return await self._repo.list_roles()

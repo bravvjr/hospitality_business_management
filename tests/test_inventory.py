@@ -142,7 +142,7 @@ async def test_stock_receipt_usage_adjustment_and_low_stock(client):
 
     levels = await client.get("/api/v1/inventory/stock/levels", cookies=cookies)
     assert levels.status_code == 200
-    level = next(row for row in levels.json() if row["product_id"] == product_id)
+    level = next(row for row in levels.json()["items"] if row["product_id"] == product_id)
     assert Decimal(level["quantity_base"]) == Decimal("19.500000")
     assert level["is_low_stock"] is False
 
@@ -161,14 +161,15 @@ async def test_stock_receipt_usage_adjustment_and_low_stock(client):
 
     low = await client.get("/api/v1/inventory/stock/levels/low", cookies=cookies)
     assert low.status_code == 200
-    assert any(row["product_id"] == product_id for row in low.json())
+    assert any(row["product_id"] == product_id for row in low.json()["items"])
 
     history = await client.get(
         f"/api/v1/inventory/stock/movements?product_id={product_id}",
         cookies=cookies,
     )
     assert history.status_code == 200
-    assert len(history.json()) >= 3
+    assert history.json()["total"] >= 3
+    assert len(history.json()["items"]) >= 3
 
 
 @pytest.mark.integration

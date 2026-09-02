@@ -50,8 +50,12 @@ async def test_api_layer_cross_tenant_isolation(client):
     assert add.status_code == 201
 
     # A sees exactly its own 2 members; B sees only its 1.
-    staff_a = (await client.get("/api/v1/auth/staff", cookies=owner_a.cookies)).json()
-    staff_b = (await client.get("/api/v1/auth/staff", cookies=owner_b.cookies)).json()
+    staff_a = (await client.get("/api/v1/auth/staff", cookies=owner_a.cookies)).json()[
+        "items"
+    ]
+    staff_b = (await client.get("/api/v1/auth/staff", cookies=owner_b.cookies)).json()[
+        "items"
+    ]
     assert len(staff_a) == 2
     assert len(staff_b) == 1
 

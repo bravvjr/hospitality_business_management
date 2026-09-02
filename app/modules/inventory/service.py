@@ -28,11 +28,13 @@ class InventoryNotFoundError(InventoryError):
 MOVEMENT_RECEIPT = "receipt"
 MOVEMENT_ADJUSTMENT = "adjustment"
 MOVEMENT_USAGE = "usage"
+MOVEMENT_SALE = "sale"
 
 REASON_DEFAULT = {
     MOVEMENT_RECEIPT: "stock_in",
     MOVEMENT_ADJUSTMENT: "adjustment",
     MOVEMENT_USAGE: "usage",
+    MOVEMENT_SALE: "sale",
 }
 
 
@@ -44,8 +46,10 @@ class InventoryService:
     async def list_units(self):
         return await self._repo.list_units()
 
-    async def list_products(self, *, tenant_id: uuid.UUID):
-        return await self._repo.list_products(tenant_id=tenant_id)
+    async def list_products(self, *, tenant_id: uuid.UUID, limit: int, offset: int):
+        return await self._repo.list_products(
+            tenant_id=tenant_id, limit=limit, offset=offset
+        )
 
     async def get_product(self, *, tenant_id: uuid.UUID, product_id: uuid.UUID):
         product = await self._repo.get_product(tenant_id=tenant_id, product_id=product_id)
@@ -74,6 +78,8 @@ class InventoryService:
             category=payload.category,
             base_unit_id=payload.base_unit_id,
             reorder_level_base=payload.reorder_level_base,
+            unit_price_minor=payload.unit_price_minor,
+            currency=payload.currency.upper() if payload.currency else None,
         )
         await self._repo.add(product)
         await self._repo.flush()
@@ -118,6 +124,10 @@ class InventoryService:
             product.category = payload.category
         if payload.reorder_level_base is not None:
             product.reorder_level_base = payload.reorder_level_base
+        if payload.unit_price_minor is not None:
+            product.unit_price_minor = payload.unit_price_minor
+        if payload.currency is not None:
+            product.currency = payload.currency.upper()
         if payload.status is not None:
             product.status = payload.status
 
@@ -166,6 +176,13 @@ class InventoryService:
         )
         return next(u for u in units if u.unit_id == payload.unit_id)
 
+    async def get_product_unit(
+        self, *, tenant_id: uuid.UUID, product_id: uuid.UUID, unit_id: uuid.UUID
+    ):
+        return await self._repo.get_product_unit(
+            tenant_id=tenant_id, product_id=product_id, unit_id=unit_id
+        )
+
     async def record_receipt(
         self,
         *,
@@ -213,13 +230,21 @@ class InventoryService:
             payload=payload,
         )
 
-    async def list_stock_levels(self, *, tenant_id: uuid.UUID) -> list[StockLevelRead]:
-        levels = await self._repo.list_stock_levels(tenant_id=tenant_id)
-        return [self._to_level_read(level) for level in levels]
+    async def list_stock_levels(
+        self, *, tenant_id: uuid.UUID, limit: int, offset: int
+    ) -> tuple[list[StockLevelRead], int]:
+        levels, total = await self._repo.list_stock_levels(
+            tenant_id=tenant_id, limit=limit, offset=offset
+        )
+        return [self._to_level_read(level) for level in levels], total
 
-    async def list_low_stock(self, *, tenant_id: uuid.UUID) -> list[StockLevelRead]:
-        levels = await self._repo.list_low_stock_levels(tenant_id=tenant_id)
-        return [self._to_level_read(level) for level in levels]
+    async def list_low_stock(
+        self, *, tenant_id: uuid.UUID, limit: int, offset: int
+    ) -> tuple[list[StockLevelRead], int]:
+        levels, total = await self._repo.list_low_stock_levels(
+            tenant_id=tenant_id, limit=limit, offset=offset
+        )
+        return [self._to_level_read(level) for level in levels], total
 
     async def list_movements(
         self,
@@ -227,11 +252,44 @@ class InventoryService:
         tenant_id: uuid.UUID,
         product_id: uuid.UUID | None = None,
         limit: int = 100,
-    ) -> list[StockMovement]:
+        offset: int = 0,
+    ) -> tuple[list[StockMovement], int]:
         if product_id is not None:
             await self.get_product(tenant_id=tenant_id, product_id=product_id)
         return await self._repo.list_movements(
-            tenant_id=tenant_id, product_id=product_id, limit=limit
+            tenant_id=tenant_id, product_id=product_id, limit=limit, offset=offset
+        )
+
+    async def record_sale_deduction(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        actor_user_id: uuid.UUID,
+        product_id: uuid.UUID,
+        quantity: Decimal,
+        unit_id: uuid.UUID,
+        source_document_id: str,
+        idempotency_key: str,
+        commit: bool = False,
+    ) -> StockMovement:
+        """Deduct stock for a completed sale. Caller owns the transaction when commit=False."""
+        payload = StockMovementCreateRequest(
+            product_id=product_id,
+            quantity=quantity,
+            unit_id=unit_id,
+            reason="sale",
+            source_document_type="order",
+            source_document_id=source_document_id,
+            idempotency_key=idempotency_key,
+        )
+        return await self._append_movement(
+            tenant_id=tenant_id,
+            actor_user_id=actor_user_id,
+            movement_type=MOVEMENT_SALE,
+            signed_entered_quantity=-quantity,
+            payload=payload,
+            commit=commit,
+            as_read=False,
         )
 
     async def _append_movement(
@@ -242,13 +300,15 @@ class InventoryService:
         movement_type: str,
         signed_entered_quantity: Decimal,
         payload: StockMovementCreateRequest,
-    ) -> StockMovementRead:
+        commit: bool = True,
+        as_read: bool = True,
+    ) -> StockMovementRead | StockMovement:
         if payload.idempotency_key:
             existing = await self._repo.get_movement_by_idempotency(
                 tenant_id=tenant_id, idempotency_key=payload.idempotency_key
             )
             if existing is not None:
-                return StockMovementRead.model_validate(existing)
+                return StockMovementRead.model_validate(existing) if as_read else existing
 
         product = await self.get_product(
             tenant_id=tenant_id, product_id=payload.product_id
@@ -291,9 +351,12 @@ class InventoryService:
         )
         await self._repo.add(movement)
         level.quantity_base = new_qty
-        await self._session.commit()
-        await self._session.refresh(movement, attribute_names=["entered_unit"])
-        return StockMovementRead.model_validate(movement)
+        if commit:
+            await self._session.commit()
+            await self._session.refresh(movement, attribute_names=["entered_unit"])
+            return StockMovementRead.model_validate(movement)
+        await self._session.flush()
+        return StockMovementRead.model_validate(movement) if as_read else movement
 
     @staticmethod
     def _to_level_read(level) -> StockLevelRead:
