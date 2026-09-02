@@ -119,19 +119,3 @@ def require_permission(*required_permissions: str):
         return context
 
     return _require_permission
-
-
-def require_role(*allowed_roles: str):
-    allowed = set(allowed_roles)
-
-    async def _require_role(
-        context: Annotated[TenantContext, Depends(get_tenant_context)],
-    ) -> TenantContext:
-        if context.role_key not in allowed:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Insufficient role",
-            )
-        return context
-
-    return _require_role

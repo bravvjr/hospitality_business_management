@@ -8,14 +8,8 @@ FINANCE = "finance"
 
 ALL_ROLE_KEYS = frozenset({OWNER, MANAGER, CASHIER, KITCHEN, FINANCE})
 
-# Roles that may manage staff for the current tenant.
-STAFF_ADMIN_ROLES = frozenset({OWNER, MANAGER})
-
 # Roles a manager may assign (owners can assign any role).
 MANAGER_ASSIGNABLE_ROLES = frozenset({CASHIER, KITCHEN, FINANCE})
-
-# Roles only an owner may assign.
-OWNER_ONLY_ASSIGNABLE_ROLES = frozenset({OWNER, MANAGER})
 
 
 def assert_assignable_role(*, actor_role: str, role_key: str) -> None:

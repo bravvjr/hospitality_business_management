@@ -1,5 +1,4 @@
 """Staff management for the current tenant (ADR-003)."""
-import secrets
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -184,8 +183,3 @@ class StaffService:
     @staticmethod
     def _to_staff_read(membership: Membership) -> StaffMemberRead:
         return StaffMemberRead(membership=membership, user=membership.user)
-
-
-def generate_temporary_password() -> str:
-    """Generate a one-time password for staff onboarding (caller delivers out-of-band)."""
-    return secrets.token_urlsafe(12)
