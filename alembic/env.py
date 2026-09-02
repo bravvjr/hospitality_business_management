@@ -17,8 +17,12 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Inject the async DB URL from application settings.
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+# Inject the async DB URL from application settings. Migrations run as the OWNER
+# role (migration_database_url) when configured; otherwise fall back to the app URL.
+_settings = get_settings()
+config.set_main_option(
+    "sqlalchemy.url", _settings.migration_database_url or _settings.database_url
+)
 
 target_metadata = Base.metadata
 

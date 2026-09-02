@@ -18,10 +18,14 @@ class Settings(BaseSettings):
     debug: bool = False
     api_v1_prefix: str = "/api/v1"
 
-    # Async SQLAlchemy URL (asyncpg driver). Overridden per environment.
+    # Async SQLAlchemy URL used at runtime by the application. Should point at a
+    # NON-owner, non-superuser role so PostgreSQL RLS is enforced (ADR-002).
     database_url: str = Field(
-        default="postgresql+asyncpg://hbm:hbm@localhost:5432/hbm",
+        default="postgresql+asyncpg://hbm_app:hbm_app@localhost:5432/hbm",
     )
+    # URL used to run Alembic migrations. Should point at the OWNER role. Falls
+    # back to database_url when unset (e.g. single-role local setups).
+    migration_database_url: str | None = None
     db_echo: bool = False
 
     # Auth (ADR-003). Override JWT_SECRET_KEY in every non-local environment.

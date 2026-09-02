@@ -66,15 +66,33 @@ docker compose up --build
 
 ## Run without Docker
 
+The app connects as a **non-owner** role (`hbm_app`) so PostgreSQL Row-Level
+Security is enforced (ADR-002); **migrations** run as the **owner** role (`hbm`).
+Create both once against your local Postgres:
+
+```sql
+-- as a superuser / owner:
+CREATE ROLE hbm LOGIN PASSWORD 'hbm';
+CREATE DATABASE hbm OWNER hbm;
+CREATE ROLE hbm_app LOGIN PASSWORD 'hbm_app' NOSUPERUSER NOBYPASSRLS;
+GRANT CONNECT ON DATABASE hbm TO hbm_app;
+GRANT USAGE ON SCHEMA public TO hbm_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE hbm IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO hbm_app;
+```
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate            # Windows: .venv\Scripts\activate
 pip install -r requirements-dev.txt
 
-cp .env.example .env                 # adjust DATABASE_URL to your local Postgres
-alembic upgrade head
-uvicorn app.main:app --reload
+cp .env.example .env                 # DATABASE_URL=app role, MIGRATION_DATABASE_URL=owner role
+alembic upgrade head                 # runs as the owner (MIGRATION_DATABASE_URL)
+uvicorn app.main:app --reload        # runs as the app role (DATABASE_URL)
 ```
+
+With Docker Compose this is automatic — `docker/initdb/10-app-role.sh` creates
+`hbm_app` on first boot.
 
 ## Migrations
 

@@ -8,7 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.db import get_session
 from app.core.security import InvalidCredentialsError, InvalidTokenError
-from app.modules.auth.deps import TenantContext, get_tenant_context, require_permission
+from app.modules.auth.deps import (
+    TenantContext,
+    get_tenant_context,
+    get_tenant_session,
+    require_permission,
+)
 from app.modules.auth.permissions import STAFF_READ, STAFF_STATUS, STAFF_WRITE
 from app.modules.auth.schemas import (
     LoginRequest,
@@ -201,7 +206,7 @@ StaffStatus = Annotated[TenantContext, Depends(require_permission(STAFF_STATUS))
 
 @router.get("/roles", response_model=list[RoleRead])
 async def list_roles(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
     _admin: StaffRead,
 ) -> list[RoleRead]:
     service = StaffService(session)
@@ -211,7 +216,7 @@ async def list_roles(
 @router.get("/staff", response_model=list[StaffMemberRead])
 async def list_staff(
     context: StaffRead,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ) -> list[StaffMemberRead]:
     service = StaffService(session)
     return await service.list_staff(tenant_id=context.tenant_id)
@@ -221,7 +226,7 @@ async def list_staff(
 async def add_staff(
     payload: StaffCreateRequest,
     context: StaffWrite,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ) -> StaffMemberRead:
     service = StaffService(session)
     try:
@@ -239,7 +244,7 @@ async def update_staff(
     membership_id: uuid.UUID,
     payload: StaffUpdateRequest,
     context: StaffWrite,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ) -> StaffMemberRead:
     service = StaffService(session)
     try:
@@ -258,7 +263,7 @@ async def update_staff(
 async def remove_staff(
     membership_id: uuid.UUID,
     context: StaffWrite,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ) -> MessageResponse:
     service = StaffService(session)
     try:
@@ -277,7 +282,7 @@ async def update_staff_status(
     membership_id: uuid.UUID,
     payload: StaffStatusUpdateRequest,
     context: StaffStatus,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ) -> StaffMemberRead:
     service = StaffService(session)
     try:

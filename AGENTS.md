@@ -60,7 +60,12 @@ Use these terms and honor these decisions (see the ADR page for full context):
   reserved for **sellable items / menu items** (ADR-012).
 - **Multi-tenancy:** shared database + shared schema, `tenant_id` on every tenant-scoped
   table, PostgreSQL **RLS** as defense-in-depth; tenant context only from a verified JWT
-  claim (ADR-002).
+  claim (ADR-002). RLS is enforced via `FORCE ROW LEVEL SECURITY` + a `tenant_isolation`
+  policy keyed on the `app.tenant_id` GUC. The app connects as a **non-owner** role
+  (`hbm_app`); **migrations run as the owner** (`hbm`). Set the per-request tenant context
+  by depending on `get_tenant_session` (see `app/modules/auth/deps.py`); the auth bootstrap
+  (login/register/switch) intentionally runs without context so it can resolve memberships
+  across tenants.
 - **Auth:** hand-rolled **JWT + RBAC**, tenant-scoped, data-driven roles/permissions (ADR-003).
 - **Money:** integer **minor units + ISO-4217 currency** on every monetary row; never floats.
   Multi-currency from day one (ADR-004).
