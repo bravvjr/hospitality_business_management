@@ -25,8 +25,20 @@ async def list_sub_tenants(
     context: TenantReader,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[TenantRead]:
+    """Immediate children of the active tenant."""
     service = TenantService(session)
     return await service.list_sub_tenants(parent_tenant_id=context.tenant_id)
+
+
+@router.get("/tree", response_model=list[TenantRead])
+async def list_sub_tenant_tree(
+    context: TenantReader,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[TenantRead]:
+    """All descendants of the active tenant (every level); build the tree client-side
+    from each node's parent_tenant_id."""
+    service = TenantService(session)
+    return await service.list_subtree(root_tenant_id=context.tenant_id)
 
 
 @router.post("", response_model=TenantRead, status_code=status.HTTP_201_CREATED)
@@ -38,7 +50,7 @@ async def create_sub_tenant(
     service = TenantService(session)
     try:
         return await service.create_sub_tenant(
-            parent_tenant_id=context.tenant_id, payload=payload
+            active_tenant_id=context.tenant_id, payload=payload
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

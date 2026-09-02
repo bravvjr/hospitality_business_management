@@ -108,6 +108,52 @@ async def test_inherited_role_is_not_elevated(client):
 
 
 @pytest.mark.integration
+async def test_multi_level_sub_tenants(client):
+    owner = await _register(client, "HQ3")
+
+    # Level 1: branch under HQ (parent defaults to the active tenant).
+    branch = (
+        await client.post(
+            "/api/v1/tenants",
+            json={"name": "Region", "base_currency": "KES"},
+            cookies=owner.cookies,
+        )
+    ).json()
+
+    # Level 2: sub-branch under the branch, created from the HQ context by naming
+    # the parent explicitly (no context switch needed).
+    sub_branch = await client.post(
+        "/api/v1/tenants",
+        json={"name": "Outlet", "base_currency": "KES", "parent_tenant_id": branch["id"]},
+        cookies=owner.cookies,
+    )
+    assert sub_branch.status_code == 201
+    assert sub_branch.json()["parent_tenant_id"] == branch["id"]
+
+    # Immediate children of HQ = just the branch.
+    children = (await client.get("/api/v1/tenants", cookies=owner.cookies)).json()
+    assert {t["id"] for t in children} == {branch["id"]}
+
+    # Full subtree = branch + sub-branch.
+    tree = (await client.get("/api/v1/tenants/tree", cookies=owner.cookies)).json()
+    assert {t["id"] for t in tree} == {branch["id"], sub_branch.json()["id"]}
+
+
+@pytest.mark.integration
+async def test_cannot_create_under_foreign_tenant(client):
+    owner_a = await _register(client, "A HQ2")
+    owner_b = await _register(client, "B HQ2")
+    foreign_tenant_id = owner_b.json()["tenant"]["id"]
+
+    denied = await client.post(
+        "/api/v1/tenants",
+        json={"name": "Sneaky", "base_currency": "KES", "parent_tenant_id": foreign_tenant_id},
+        cookies=owner_a.cookies,
+    )
+    assert denied.status_code == 400
+
+
+@pytest.mark.integration
 async def test_outsider_cannot_access_foreign_sub_tenant(client):
     owner_a = await _register(client, "A HQ")
     child = (
