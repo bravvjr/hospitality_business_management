@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     access_token_cookie_name: str = "access_token"
     refresh_token_cookie_name: str = "refresh_token"
 
+    # Rate limiting for sensitive auth endpoints (per client IP, per endpoint).
+    rate_limit_enabled: bool = True
+    auth_rate_limit_max: int = 20
+    auth_rate_limit_window_seconds: int = 60
+
 
 @lru_cache
 def get_settings() -> Settings:

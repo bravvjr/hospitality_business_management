@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.db import get_session
+from app.core.rate_limit import rate_limit
 from app.core.security import InvalidCredentialsError, InvalidTokenError
 from app.modules.auth.deps import (
     TenantContext,
@@ -65,7 +66,12 @@ def _clear_auth_cookies(response: Response, settings: Settings) -> None:
     response.delete_cookie(settings.refresh_token_cookie_name, path="/")
 
 
-@router.post("/register", response_model=SessionRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register",
+    response_model=SessionRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limit("auth:register"))],
+)
 async def register(
     payload: RegisterRequest,
     response: Response,
@@ -87,7 +93,11 @@ async def register(
     return session_read
 
 
-@router.post("/login", response_model=SessionRead)
+@router.post(
+    "/login",
+    response_model=SessionRead,
+    dependencies=[Depends(rate_limit("auth:login"))],
+)
 async def login(
     payload: LoginRequest,
     response: Response,
@@ -113,7 +123,11 @@ async def login(
     return session_read
 
 
-@router.post("/refresh", response_model=SessionRead)
+@router.post(
+    "/refresh",
+    response_model=SessionRead,
+    dependencies=[Depends(rate_limit("auth:refresh"))],
+)
 async def refresh_session(
     request: Request,
     response: Response,
