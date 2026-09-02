@@ -38,9 +38,11 @@ async def test_owner_adds_and_lists_staff(client):
 
     list_resp = await client.get("/api/v1/auth/staff", cookies=owner_resp.cookies)
     assert list_resp.status_code == 200
-    emails = {member["user"]["email"] for member in list_resp.json()}
+    page = list_resp.json()
+    emails = {member["user"]["email"] for member in page["items"]}
     assert body["user"]["email"] in emails
-    assert len(list_resp.json()) == 2  # owner + cashier
+    assert page["total"] == 2  # owner + cashier
+    assert len(page["items"]) == 2
 
 
 @pytest.mark.integration
@@ -154,7 +156,7 @@ async def test_update_and_remove_staff(client):
     assert removed.status_code == 200
 
     staff = await client.get("/api/v1/auth/staff", cookies=owner_resp.cookies)
-    assert all(m["membership"]["id"] != membership_id for m in staff.json())
+    assert all(m["membership"]["id"] != membership_id for m in staff.json()["items"])
 
 
 @pytest.mark.integration

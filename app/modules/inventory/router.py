@@ -2,9 +2,10 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.pagination import Page, Pagination, page_from
 from app.modules.auth.deps import TenantContext, get_tenant_session, require_permission
 from app.modules.inventory.permissions import INVENTORY_READ, INVENTORY_WRITE
 from app.modules.inventory.schemas import (
@@ -45,12 +46,18 @@ async def list_units(
     return await InventoryService(session).list_units()
 
 
-@router.get("/products", response_model=list[ProductRead])
+@router.get("/products", response_model=Page[ProductRead])
 async def list_products(
     context: InventoryReader,
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
-) -> list[ProductRead]:
-    return await InventoryService(session).list_products(tenant_id=context.tenant_id)
+    pagination: Pagination,
+) -> Page[ProductRead]:
+    items, total = await InventoryService(session).list_products(
+        tenant_id=context.tenant_id,
+        limit=pagination.limit,
+        offset=pagination.offset,
+    )
+    return page_from(items, total=total, pagination=pagination)
 
 
 @router.post("/products", response_model=ProductRead, status_code=status.HTTP_201_CREATED)
@@ -189,32 +196,48 @@ async def stock_adjustment(
         raise _map_error(exc) from exc
 
 
-@router.get("/stock/levels", response_model=list[StockLevelRead])
+@router.get("/stock/levels", response_model=Page[StockLevelRead])
 async def stock_levels(
     context: InventoryReader,
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
-) -> list[StockLevelRead]:
-    return await InventoryService(session).list_stock_levels(tenant_id=context.tenant_id)
+    pagination: Pagination,
+) -> Page[StockLevelRead]:
+    items, total = await InventoryService(session).list_stock_levels(
+        tenant_id=context.tenant_id,
+        limit=pagination.limit,
+        offset=pagination.offset,
+    )
+    return page_from(items, total=total, pagination=pagination)
 
 
-@router.get("/stock/levels/low", response_model=list[StockLevelRead])
+@router.get("/stock/levels/low", response_model=Page[StockLevelRead])
 async def low_stock_levels(
     context: InventoryReader,
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
-) -> list[StockLevelRead]:
-    return await InventoryService(session).list_low_stock(tenant_id=context.tenant_id)
+    pagination: Pagination,
+) -> Page[StockLevelRead]:
+    items, total = await InventoryService(session).list_low_stock(
+        tenant_id=context.tenant_id,
+        limit=pagination.limit,
+        offset=pagination.offset,
+    )
+    return page_from(items, total=total, pagination=pagination)
 
 
-@router.get("/stock/movements", response_model=list[StockMovementRead])
+@router.get("/stock/movements", response_model=Page[StockMovementRead])
 async def stock_movements(
     context: InventoryReader,
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    pagination: Pagination,
     product_id: uuid.UUID | None = None,
-    limit: Annotated[int, Query(ge=1, le=500)] = 100,
-) -> list[StockMovementRead]:
+) -> Page[StockMovementRead]:
     try:
-        return await InventoryService(session).list_movements(
-            tenant_id=context.tenant_id, product_id=product_id, limit=limit
+        items, total = await InventoryService(session).list_movements(
+            tenant_id=context.tenant_id,
+            product_id=product_id,
+            limit=pagination.limit,
+            offset=pagination.offset,
         )
     except InventoryError as exc:
         raise _map_error(exc) from exc
+    return page_from(items, total=total, pagination=pagination)

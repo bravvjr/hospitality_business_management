@@ -11,3 +11,7 @@ TENANT_WRITE = "tenant.write"
 # Inventory module (re-exported for convenience; canonical keys live in inventory.permissions).
 INVENTORY_READ = "inventory.read"
 INVENTORY_WRITE = "inventory.write"
+
+# POS module.
+POS_READ = "pos.read"
+POS_WRITE = "pos.write"

@@ -2,7 +2,7 @@
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -21,14 +21,24 @@ class InventoryRepository:
         result = await self._session.execute(select(Unit).where(Unit.id == unit_id))
         return result.scalar_one_or_none()
 
-    async def list_products(self, *, tenant_id: uuid.UUID) -> list[Product]:
-        result = await self._session.execute(
-            select(Product)
-            .options(selectinload(Product.base_unit))
-            .where(Product.tenant_id == tenant_id)
-            .order_by(Product.name.asc())
+    async def list_products(
+        self, *, tenant_id: uuid.UUID, limit: int, offset: int
+    ) -> tuple[list[Product], int]:
+        base = select(Product).where(Product.tenant_id == tenant_id)
+        total = int(
+            (
+                await self._session.execute(
+                    select(func.count()).select_from(Product).where(Product.tenant_id == tenant_id)
+                )
+            ).scalar_one()
         )
-        return list(result.scalars().all())
+        result = await self._session.execute(
+            base.options(selectinload(Product.base_unit))
+            .order_by(Product.name.asc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return list(result.scalars().all()), total
 
     async def get_product(
         self, *, tenant_id: uuid.UUID, product_id: uuid.UUID
@@ -84,7 +94,18 @@ class InventoryRepository:
         )
         return result.scalar_one_or_none()
 
-    async def list_stock_levels(self, *, tenant_id: uuid.UUID) -> list[StockLevel]:
+    async def list_stock_levels(
+        self, *, tenant_id: uuid.UUID, limit: int, offset: int
+    ) -> tuple[list[StockLevel], int]:
+        total = int(
+            (
+                await self._session.execute(
+                    select(func.count())
+                    .select_from(StockLevel)
+                    .where(StockLevel.tenant_id == tenant_id)
+                )
+            ).scalar_one()
+        )
         result = await self._session.execute(
             select(StockLevel)
             .options(
@@ -92,25 +113,42 @@ class InventoryRepository:
             )
             .where(StockLevel.tenant_id == tenant_id)
             .order_by(StockLevel.product_id.asc())
+            .limit(limit)
+            .offset(offset)
         )
-        return list(result.scalars().all())
+        return list(result.scalars().all()), total
 
-    async def list_low_stock_levels(self, *, tenant_id: uuid.UUID) -> list[StockLevel]:
+    async def list_low_stock_levels(
+        self, *, tenant_id: uuid.UUID, limit: int, offset: int
+    ) -> tuple[list[StockLevel], int]:
+        filters = (
+            StockLevel.tenant_id == tenant_id,
+            Product.reorder_level_base.is_not(None),
+            StockLevel.quantity_base <= Product.reorder_level_base,
+            Product.status == "active",
+        )
+        total = int(
+            (
+                await self._session.execute(
+                    select(func.count())
+                    .select_from(StockLevel)
+                    .join(Product, Product.id == StockLevel.product_id)
+                    .where(*filters)
+                )
+            ).scalar_one()
+        )
         result = await self._session.execute(
             select(StockLevel)
             .join(Product, Product.id == StockLevel.product_id)
             .options(
                 selectinload(StockLevel.product).selectinload(Product.base_unit),
             )
-            .where(
-                StockLevel.tenant_id == tenant_id,
-                Product.reorder_level_base.is_not(None),
-                StockLevel.quantity_base <= Product.reorder_level_base,
-                Product.status == "active",
-            )
+            .where(*filters)
             .order_by(StockLevel.quantity_base.asc())
+            .limit(limit)
+            .offset(offset)
         )
-        return list(result.scalars().all())
+        return list(result.scalars().all()), total
 
     async def get_movement_by_idempotency(
         self, *, tenant_id: uuid.UUID, idempotency_key: str
@@ -131,18 +169,28 @@ class InventoryRepository:
         tenant_id: uuid.UUID,
         product_id: uuid.UUID | None = None,
         limit: int = 100,
-    ) -> list[StockMovement]:
-        stmt = (
+        offset: int = 0,
+    ) -> tuple[list[StockMovement], int]:
+        filters = [StockMovement.tenant_id == tenant_id]
+        if product_id is not None:
+            filters.append(StockMovement.product_id == product_id)
+
+        total = int(
+            (
+                await self._session.execute(
+                    select(func.count()).select_from(StockMovement).where(*filters)
+                )
+            ).scalar_one()
+        )
+        result = await self._session.execute(
             select(StockMovement)
             .options(selectinload(StockMovement.entered_unit))
-            .where(StockMovement.tenant_id == tenant_id)
+            .where(*filters)
             .order_by(StockMovement.created_at.desc())
             .limit(limit)
+            .offset(offset)
         )
-        if product_id is not None:
-            stmt = stmt.where(StockMovement.product_id == product_id)
-        result = await self._session.execute(stmt)
-        return list(result.scalars().all())
+        return list(result.scalars().all()), total
 
     async def add(self, entity: object) -> None:
         self._session.add(entity)
