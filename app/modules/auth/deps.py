@@ -17,10 +17,19 @@ from app.modules.auth.repository import AuthRepository
 @dataclass(frozen=True, slots=True)
 class TenantContext:
     user_id: uuid.UUID
+    # The ACTIVE tenant node the request operates on (may be a sub-tenant reached
+    # via inherited access). RLS context and operations target this tenant.
     tenant_id: uuid.UUID
+    # Effective role for the active tenant (direct or inherited from an ancestor).
     role_key: str
     user: User
+    # Source membership granting access; membership.tenant_id may be an ancestor
+    # of tenant_id when access is inherited (ADR-012 downward inheritance).
     membership: Membership
+
+    @property
+    def is_inherited(self) -> bool:
+        return self.membership.tenant_id != self.tenant_id
 
 
 def _extract_bearer_token(request: Request) -> str | None:
@@ -78,16 +87,18 @@ async def get_tenant_context(
             detail="User is unavailable",
         )
 
-    membership = await repo.get_membership(user_id=payload.user_id, tenant_id=payload.tenant_id)
+    membership = await repo.resolve_membership_for_tenant(
+        user_id=payload.user_id, tenant_id=payload.tenant_id
+    )
     if membership is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tenant membership not found",
+            detail="No access to tenant",
         )
 
     return TenantContext(
         user_id=user.id,
-        tenant_id=membership.tenant_id,
+        tenant_id=payload.tenant_id,
         role_key=membership.role.key,
         user=user,
         membership=membership,

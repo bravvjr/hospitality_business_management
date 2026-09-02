@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TenantBase(BaseModel):
@@ -13,6 +13,11 @@ class TenantBase(BaseModel):
 
 class TenantCreate(TenantBase):
     pass
+
+
+class SubTenantCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    base_currency: str = Field(default="KES", min_length=3, max_length=3)
 
 
 class TenantRead(TenantBase):

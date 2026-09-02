@@ -176,7 +176,11 @@ async def me(
 ) -> SessionRead:
     service = AuthService(session, settings)
     try:
-        return await service.build_session(user=context.user, membership=context.membership)
+        return await service.build_session(
+            user=context.user,
+            membership=context.membership,
+            active_tenant_id=context.tenant_id,
+        )
     except InvalidCredentialsError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
 

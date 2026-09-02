@@ -1,7 +1,7 @@
 """Data access for auth entities."""
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -91,6 +91,52 @@ class AuthRepository:
     async def get_tenant(self, tenant_id: uuid.UUID) -> Tenant | None:
         result = await self._session.execute(select(Tenant).where(Tenant.id == tenant_id))
         return result.scalar_one_or_none()
+
+    async def get_ancestor_tenant_ids(self, tenant_id: uuid.UUID) -> list[uuid.UUID]:
+        """Ancestors of a tenant (excluding itself), nearest parent first (ADR-012)."""
+        result = await self._session.execute(
+            text(
+                """
+                WITH RECURSIVE ancestors AS (
+                    SELECT id, parent_tenant_id, 0 AS depth
+                    FROM tenants WHERE id = :tid
+                    UNION ALL
+                    SELECT t.id, t.parent_tenant_id, a.depth + 1
+                    FROM tenants t JOIN ancestors a ON t.id = a.parent_tenant_id
+                )
+                SELECT id FROM ancestors WHERE depth > 0 ORDER BY depth
+                """
+            ),
+            {"tid": str(tenant_id)},
+        )
+        return [row[0] for row in result.all()]
+
+    async def resolve_membership_for_tenant(
+        self,
+        *,
+        user_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+    ) -> Membership | None:
+        """Effective membership for a tenant node: a direct membership if present,
+        otherwise the nearest ancestor membership (downward RBAC inheritance, ADR-012).
+        Returns the source membership; its role is the effective role.
+        """
+        direct = await self.get_membership(user_id=user_id, tenant_id=tenant_id)
+        if direct is not None:
+            return direct
+        for ancestor_id in await self.get_ancestor_tenant_ids(tenant_id):
+            inherited = await self.get_membership(user_id=user_id, tenant_id=ancestor_id)
+            if inherited is not None:
+                return inherited
+        return None
+
+    async def list_child_tenants(self, parent_tenant_id: uuid.UUID) -> list[Tenant]:
+        result = await self._session.execute(
+            select(Tenant)
+            .where(Tenant.parent_tenant_id == parent_tenant_id)
+            .order_by(Tenant.created_at.asc())
+        )
+        return list(result.scalars().all())
 
     async def add(self, entity: User | Tenant | Membership) -> None:
         self._session.add(entity)

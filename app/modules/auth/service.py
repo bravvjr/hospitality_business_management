@@ -1,4 +1,9 @@
-"""Authentication business logic (ADR-003)."""
+"""Authentication business logic (ADR-003 / ADR-012).
+
+Tenant access resolves through the tenant hierarchy: a direct membership, or the
+nearest ancestor membership (downward inheritance). Tokens are always scoped to
+the ACTIVE tenant node; the effective role comes from the source membership.
+"""
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,7 +50,7 @@ class AuthService:
         await self._repo.add(membership)
         await self._session.commit()
 
-        return self._session_and_tokens(user=user, membership=membership, tenant=tenant)
+        return self._session_and_tokens(user=user, source_membership=membership, tenant=tenant)
 
     async def login(
         self,
@@ -60,28 +65,24 @@ class AuthService:
         if not verify_password(password, user.password_hash):
             raise InvalidCredentialsError("Invalid email or password")
 
-        memberships = await self._repo.list_memberships(user.id)
-        if not memberships:
-            raise InvalidCredentialsError("User has no tenant memberships")
+        target_tenant_id = tenant_id
+        if target_tenant_id is None:
+            memberships = await self._repo.list_memberships(user.id)
+            if not memberships:
+                raise InvalidCredentialsError("User has no tenant memberships")
+            target_tenant_id = memberships[0].tenant_id
 
-        membership = self._select_membership(memberships, tenant_id)
-        tenant = await self._repo.get_tenant(membership.tenant_id)
-        if tenant is None or tenant.status != "active":
-            raise InvalidCredentialsError("Tenant is unavailable")
-
-        return self._session_and_tokens(user=user, membership=membership, tenant=tenant)
+        membership, tenant = await self._authorize(user_id=user.id, tenant_id=target_tenant_id)
+        return self._session_and_tokens(user=user, source_membership=membership, tenant=tenant)
 
     async def refresh(self, refresh_token: str) -> tuple[SessionRead, str, str]:
         payload = decode_token(refresh_token, settings=self._settings)
         if payload.token_type != "refresh":
             raise InvalidTokenError("Refresh token required")
 
-        user, membership, tenant = await self._load_active(
-            user_id=payload.user_id,
-            tenant_id=payload.tenant_id,
-            missing_membership_msg="Membership is unavailable",
-        )
-        return self._session_and_tokens(user=user, membership=membership, tenant=tenant)
+        user = await self._active_user(payload.user_id)
+        membership, tenant = await self._authorize(user_id=user.id, tenant_id=payload.tenant_id)
+        return self._session_and_tokens(user=user, source_membership=membership, tenant=tenant)
 
     async def switch_tenant(
         self,
@@ -89,80 +90,63 @@ class AuthService:
         user_id: uuid.UUID,
         tenant_id: uuid.UUID,
     ) -> tuple[SessionRead, str, str]:
-        user, membership, tenant = await self._load_active(
-            user_id=user_id,
-            tenant_id=tenant_id,
-            missing_membership_msg="Membership not found for tenant",
-        )
-        return self._session_and_tokens(user=user, membership=membership, tenant=tenant)
+        user = await self._active_user(user_id)
+        membership, tenant = await self._authorize(user_id=user_id, tenant_id=tenant_id)
+        return self._session_and_tokens(user=user, source_membership=membership, tenant=tenant)
 
-    async def build_session(self, *, user: User, membership: Membership) -> SessionRead:
-        """Build a session view from an already-loaded user + membership (e.g. /me).
-
-        Avoids re-fetching the user/membership that the auth dependency already loaded;
-        only the tenant summary is queried.
-        """
-        tenant = await self._repo.get_tenant(membership.tenant_id)
+    async def build_session(
+        self,
+        *,
+        user: User,
+        membership: Membership,
+        active_tenant_id: uuid.UUID,
+    ) -> SessionRead:
+        """Build a session view for the active tenant from an already-loaded user +
+        (source) membership (e.g. /me), fetching only the active tenant summary."""
+        tenant = await self._repo.get_tenant(active_tenant_id)
         if tenant is None:
             raise InvalidCredentialsError("Tenant is unavailable")
         return self._build_session_read(user=user, tenant=tenant, membership=membership)
 
-    async def _load_active(
+    async def _active_user(self, user_id: uuid.UUID) -> User:
+        user = await self._repo.get_user_by_id(user_id)
+        if user is None or user.status != "active":
+            raise InvalidCredentialsError("User is unavailable")
+        return user
+
+    async def _authorize(
         self,
         *,
         user_id: uuid.UUID,
         tenant_id: uuid.UUID,
-        missing_membership_msg: str,
-    ) -> tuple[User, Membership, Tenant]:
-        user = await self._repo.get_user_by_id(user_id)
-        if user is None or user.status != "active":
-            raise InvalidCredentialsError("User is unavailable")
-        membership = await self._repo.get_membership(user_id=user_id, tenant_id=tenant_id)
+    ) -> tuple[Membership, Tenant]:
+        """Resolve effective (direct or inherited) access to a tenant node."""
+        membership = await self._repo.resolve_membership_for_tenant(
+            user_id=user_id, tenant_id=tenant_id
+        )
         if membership is None:
-            raise InvalidCredentialsError(missing_membership_msg)
+            raise InvalidCredentialsError("No access to tenant")
         tenant = await self._repo.get_tenant(tenant_id)
         if tenant is None or tenant.status != "active":
             raise InvalidCredentialsError("Tenant is unavailable")
-        return user, membership, tenant
+        return membership, tenant
 
     def _session_and_tokens(
         self,
         *,
         user: User,
-        membership: Membership,
+        source_membership: Membership,
         tenant: Tenant,
     ) -> tuple[SessionRead, str, str]:
-        session = self._build_session_read(user=user, tenant=tenant, membership=membership)
-        access, refresh = self._issue_tokens(user_id=user.id, membership=membership)
-        return session, access, refresh
-
-    def _issue_tokens(self, *, user_id: uuid.UUID, membership: Membership) -> tuple[str, str]:
-        role_key = membership.role.key
+        role_key = source_membership.role.key
+        session = self._build_session_read(user=user, tenant=tenant, membership=source_membership)
         access = create_access_token(
-            user_id=user_id,
-            tenant_id=membership.tenant_id,
-            role_key=role_key,
-            settings=self._settings,
+            user_id=user.id, tenant_id=tenant.id, role_key=role_key, settings=self._settings
         )
         refresh = create_refresh_token(
-            user_id=user_id,
-            tenant_id=membership.tenant_id,
-            role_key=role_key,
-            settings=self._settings,
+            user_id=user.id, tenant_id=tenant.id, role_key=role_key, settings=self._settings
         )
-        return access, refresh
-
-    @staticmethod
-    def _select_membership(
-        memberships: list[Membership],
-        tenant_id: uuid.UUID | None,
-    ) -> Membership:
-        if tenant_id is None:
-            return memberships[0]
-        for membership in memberships:
-            if membership.tenant_id == tenant_id:
-                return membership
-        raise InvalidCredentialsError("Membership not found for tenant")
+        return session, access, refresh
 
     @staticmethod
     def _build_session_read(
