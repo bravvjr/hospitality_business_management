@@ -64,7 +64,7 @@ jobs:
             "GRANT CONNECT ON DATABASE hbm TO hbm_app; GRANT USAGE ON SCHEMA public TO hbm_app; ALTER DEFAULT PRIVILEGES FOR ROLE hbm IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO hbm_app; ALTER DEFAULT PRIVILEGES FOR ROLE hbm IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO hbm_app;"
 
       - name: Ruff
-        run: ruff check app tests alembic
+        run: ruff check app tests alembic scripts
 
       - name: Unit tests
         run: pytest -m unit

@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import func, select, text, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -169,3 +169,10 @@ class AuthRepository:
             .where(RefreshSession.id == jti, RefreshSession.revoked_at.is_(None))
             .values(revoked_at=func.now())
         )
+
+    async def delete_expired_refresh_sessions(self, now: datetime) -> int:
+        """Delete refresh sessions past their expiry (revoked or not); returns count."""
+        result = await self._session.execute(
+            delete(RefreshSession).where(RefreshSession.expires_at <= now)
+        )
+        return result.rowcount or 0

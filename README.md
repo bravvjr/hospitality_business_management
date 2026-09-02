@@ -102,6 +102,14 @@ alembic revision --autogenerate -m "message"   # create a new migration
 alembic downgrade -1                 # roll back one
 ```
 
+## Maintenance
+
+Prune expired refresh-token sessions periodically (cron / systemd timer):
+
+```bash
+python -m scripts.prune_refresh_sessions
+```
+
 ## Tests
 
 ```bash

@@ -105,6 +105,12 @@ class AuthService:
         membership, tenant = await self._authorize(user_id=user_id, tenant_id=tenant_id)
         return await self._issue(user=user, source_membership=membership, tenant=tenant)
 
+    async def prune_expired_refresh_sessions(self) -> int:
+        """Delete expired refresh sessions (maintenance). Returns the number removed."""
+        count = await self._repo.delete_expired_refresh_sessions(datetime.now(UTC))
+        await self._session.commit()
+        return count
+
     async def logout(self, refresh_token: str | None) -> None:
         """Best-effort revocation of the presented refresh token."""
         if not refresh_token:
