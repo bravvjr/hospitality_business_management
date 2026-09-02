@@ -3,9 +3,8 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "cursor/**"]
   pull_request:
-    branches: [main]
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -75,3 +74,15 @@ jobs:
 
       - name: Integration tests
         run: pytest -m integration
+
+  docker-build:
+    # Builds the API image on python:3.14-slim with the Dockerfile's wheels-only
+    # install (--only-binary=:all:). Fails fast on a missing cp314 wheel instead
+    # of silently compiling/hanging — the class of bug that broke local builds.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build API image
+        run: docker build -t hbm-api:ci .
