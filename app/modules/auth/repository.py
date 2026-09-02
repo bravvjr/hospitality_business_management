@@ -1,11 +1,12 @@
 """Data access for auth entities."""
 import uuid
+from datetime import datetime
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.modules.auth.models import Membership, Permission, Role, User
+from app.modules.auth.models import Membership, Permission, RefreshSession, Role, User
 from app.modules.tenant.models import Tenant
 
 
@@ -143,3 +144,28 @@ class AuthRepository:
 
     async def flush(self) -> None:
         await self._session.flush()
+
+    async def create_refresh_session(
+        self,
+        *,
+        jti: uuid.UUID,
+        user_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        expires_at: datetime,
+    ) -> None:
+        self._session.add(
+            RefreshSession(id=jti, user_id=user_id, tenant_id=tenant_id, expires_at=expires_at)
+        )
+
+    async def get_refresh_session(self, jti: uuid.UUID) -> RefreshSession | None:
+        result = await self._session.execute(
+            select(RefreshSession).where(RefreshSession.id == jti)
+        )
+        return result.scalar_one_or_none()
+
+    async def revoke_refresh_session(self, jti: uuid.UUID) -> None:
+        await self._session.execute(
+            update(RefreshSession)
+            .where(RefreshSession.id == jti, RefreshSession.revoked_at.is_(None))
+            .values(revoked_at=func.now())
+        )

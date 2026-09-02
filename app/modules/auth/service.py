@@ -5,11 +5,13 @@ nearest ancestor membership (downward inheritance). Tokens are always scoped to
 the ACTIVE tenant node; the effective role comes from the source membership.
 """
 import uuid
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.security import (
+    AuthError,
     InvalidCredentialsError,
     InvalidTokenError,
     create_access_token,
@@ -50,7 +52,7 @@ class AuthService:
         await self._repo.add(membership)
         await self._session.commit()
 
-        return self._session_and_tokens(user=user, source_membership=membership, tenant=tenant)
+        return await self._issue(user=user, source_membership=membership, tenant=tenant)
 
     async def login(
         self,
@@ -73,16 +75,25 @@ class AuthService:
             target_tenant_id = memberships[0].tenant_id
 
         membership, tenant = await self._authorize(user_id=user.id, tenant_id=target_tenant_id)
-        return self._session_and_tokens(user=user, source_membership=membership, tenant=tenant)
+        return await self._issue(user=user, source_membership=membership, tenant=tenant)
 
     async def refresh(self, refresh_token: str) -> tuple[SessionRead, str, str]:
         payload = decode_token(refresh_token, settings=self._settings)
-        if payload.token_type != "refresh":
+        if payload.token_type != "refresh" or payload.jti is None:
             raise InvalidTokenError("Refresh token required")
+
+        session_row = await self._repo.get_refresh_session(payload.jti)
+        if session_row is None or session_row.revoked_at is not None:
+            raise InvalidCredentialsError("Refresh token is no longer valid")
+        if session_row.expires_at <= datetime.now(UTC):
+            raise InvalidCredentialsError("Refresh token has expired")
+
+        # Rotate: revoke the presented token, then issue a fresh pair.
+        await self._repo.revoke_refresh_session(payload.jti)
 
         user = await self._active_user(payload.user_id)
         membership, tenant = await self._authorize(user_id=user.id, tenant_id=payload.tenant_id)
-        return self._session_and_tokens(user=user, source_membership=membership, tenant=tenant)
+        return await self._issue(user=user, source_membership=membership, tenant=tenant)
 
     async def switch_tenant(
         self,
@@ -92,7 +103,19 @@ class AuthService:
     ) -> tuple[SessionRead, str, str]:
         user = await self._active_user(user_id)
         membership, tenant = await self._authorize(user_id=user_id, tenant_id=tenant_id)
-        return self._session_and_tokens(user=user, source_membership=membership, tenant=tenant)
+        return await self._issue(user=user, source_membership=membership, tenant=tenant)
+
+    async def logout(self, refresh_token: str | None) -> None:
+        """Best-effort revocation of the presented refresh token."""
+        if not refresh_token:
+            return
+        try:
+            payload = decode_token(refresh_token, settings=self._settings)
+        except AuthError:
+            return
+        if payload.token_type == "refresh" and payload.jti is not None:
+            await self._repo.revoke_refresh_session(payload.jti)
+            await self._session.commit()
 
     async def build_session(
         self,
@@ -131,21 +154,33 @@ class AuthService:
             raise InvalidCredentialsError("Tenant is unavailable")
         return membership, tenant
 
-    def _session_and_tokens(
+    async def _issue(
         self,
         *,
         user: User,
         source_membership: Membership,
         tenant: Tenant,
     ) -> tuple[SessionRead, str, str]:
+        """Build the session view and issue an access + refresh pair, persisting the
+        refresh token's jti so it can be rotated/revoked (ADR-003)."""
         role_key = source_membership.role.key
         session = self._build_session_read(user=user, tenant=tenant, membership=source_membership)
         access = create_access_token(
             user_id=user.id, tenant_id=tenant.id, role_key=role_key, settings=self._settings
         )
+        jti = uuid.uuid4()
         refresh = create_refresh_token(
-            user_id=user.id, tenant_id=tenant.id, role_key=role_key, settings=self._settings
+            user_id=user.id,
+            tenant_id=tenant.id,
+            role_key=role_key,
+            jti=jti,
+            settings=self._settings,
         )
+        expires_at = datetime.now(UTC) + timedelta(days=self._settings.refresh_token_expire_days)
+        await self._repo.create_refresh_session(
+            jti=jti, user_id=user.id, tenant_id=tenant.id, expires_at=expires_at
+        )
+        await self._session.commit()
         return session, access, refresh
 
     @staticmethod

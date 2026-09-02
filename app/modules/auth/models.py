@@ -4,8 +4,9 @@ Users are global identities; memberships link a user to a tenant node with a rol
 Permissions are data-driven and granted to roles via role_permissions.
 """
 import uuid
+from datetime import datetime
 
-from sqlalchemy import Column, ForeignKey, String, Table, UniqueConstraint, Uuid
+from sqlalchemy import Column, DateTime, ForeignKey, String, Table, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base, TimestampMixin, UUIDMixin
@@ -91,3 +92,21 @@ class Membership(UUIDMixin, TimestampMixin, Base):
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<Membership user_id={self.user_id} tenant_id={self.tenant_id}>"
+
+
+class RefreshSession(TimestampMixin, Base):
+    """Server-side record of an issued refresh token (its `jti`), enabling
+    rotation and revocation (logout / re-use detection)."""
+
+    __tablename__ = "refresh_sessions"
+
+    # Primary key is the token's jti (set explicitly at issue time).
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

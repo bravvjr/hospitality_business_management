@@ -187,9 +187,13 @@ async def me(
 
 @router.post("/logout", response_model=MessageResponse)
 async def logout(
+    request: Request,
     response: Response,
+    session: Annotated[AsyncSession, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> MessageResponse:
+    refresh_token = request.cookies.get(settings.refresh_token_cookie_name)
+    await AuthService(session, settings).logout(refresh_token)
     _clear_auth_cookies(response, settings)
     return MessageResponse(message="Logged out")
 

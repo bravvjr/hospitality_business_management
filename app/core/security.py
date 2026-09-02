@@ -31,6 +31,7 @@ class TokenPayload:
     tenant_id: uuid.UUID
     role_key: str
     token_type: str
+    jti: uuid.UUID | None = None
 
 
 def hash_password(plain_password: str) -> str:
@@ -52,6 +53,7 @@ def _encode_token(
     role_key: str,
     token_type: str,
     expires_delta: timedelta,
+    jti: uuid.UUID | None = None,
 ) -> str:
     now = datetime.now(UTC)
     payload: dict[str, Any] = {
@@ -62,6 +64,8 @@ def _encode_token(
         "iat": now,
         "exp": now + expires_delta,
     }
+    if jti is not None:
+        payload["jti"] = str(jti)
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
@@ -88,6 +92,7 @@ def create_refresh_token(
     user_id: uuid.UUID,
     tenant_id: uuid.UUID,
     role_key: str,
+    jti: uuid.UUID,
     settings: Settings | None = None,
 ) -> str:
     settings = settings or get_settings()
@@ -98,6 +103,7 @@ def create_refresh_token(
         role_key=role_key,
         token_type="refresh",
         expires_delta=timedelta(days=settings.refresh_token_expire_days),
+        jti=jti,
     )
 
 
@@ -113,11 +119,13 @@ def decode_token(token: str, *, settings: Settings | None = None) -> TokenPayloa
         raise InvalidTokenError("Invalid or expired token") from exc
 
     try:
+        jti_raw = payload.get("jti")
         return TokenPayload(
             user_id=uuid.UUID(payload["sub"]),
             tenant_id=uuid.UUID(payload["tenant_id"]),
             role_key=payload["role"],
             token_type=payload["type"],
+            jti=uuid.UUID(jti_raw) if jti_raw else None,
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise InvalidTokenError("Token payload is missing required claims") from exc
