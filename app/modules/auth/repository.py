@@ -1,7 +1,7 @@
 """Data access for auth entities."""
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -66,11 +66,12 @@ class AuthRepository:
 
     async def count_memberships_with_role(self, *, tenant_id: uuid.UUID, role_key: str) -> int:
         result = await self._session.execute(
-            select(Membership)
+            select(func.count())
+            .select_from(Membership)
             .join(Role)
             .where(Membership.tenant_id == tenant_id, Role.key == role_key)
         )
-        return len(list(result.scalars().all()))
+        return int(result.scalar_one())
 
     async def list_roles(self) -> list[Role]:
         result = await self._session.execute(select(Role).order_by(Role.name.asc()))

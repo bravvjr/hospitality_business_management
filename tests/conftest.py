@@ -1,4 +1,6 @@
 """Shared pytest fixtures (ADR-010)."""
+import contextlib
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -11,17 +13,21 @@ def app():
     return create_app()
 
 
+@contextlib.asynccontextmanager
+async def _make_client(app):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        yield ac
+
+
 @pytest.fixture
 async def client(app):
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+    async with _make_client(app) as ac:
         yield ac
     await engine.dispose()
 
 
 @pytest.fixture
 async def anonymous_client(app):
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+    """An independent client with its own cookie jar (for unauthenticated checks)."""
+    async with _make_client(app) as ac:
         yield ac
-    await engine.dispose()

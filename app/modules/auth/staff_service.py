@@ -19,6 +19,10 @@ class StaffError(Exception):
     """Business rule violation for staff operations."""
 
 
+class StaffNotFoundError(StaffError):
+    """The targeted staff member does not exist in the current tenant."""
+
+
 class StaffService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -166,7 +170,7 @@ class StaffService:
     ) -> Membership:
         membership = await self._repo.get_membership_by_id(membership_id)
         if membership is None or membership.tenant_id != tenant_id:
-            raise StaffError("Staff member not found")
+            raise StaffNotFoundError("Staff member not found")
         return membership
 
     async def _ensure_not_last_owner(

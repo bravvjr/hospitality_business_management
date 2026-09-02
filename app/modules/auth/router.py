@@ -28,15 +28,9 @@ from app.modules.auth.schemas import (
     SwitchTenantRequest,
 )
 from app.modules.auth.service import AuthService
-from app.modules.auth.staff_service import StaffError, StaffService
+from app.modules.auth.staff_service import StaffError, StaffNotFoundError, StaffService
 
 router = APIRouter()
-
-
-def _staff_error_status(exc: StaffError) -> int:
-    if "not found" in str(exc).lower():
-        return status.HTTP_404_NOT_FOUND
-    return status.HTTP_400_BAD_REQUEST
 
 
 def _set_auth_cookies(
@@ -182,10 +176,7 @@ async def me(
 ) -> SessionRead:
     service = AuthService(session, settings)
     try:
-        return await service.get_session_for_user(
-            user_id=context.user_id,
-            tenant_id=context.tenant_id,
-        )
+        return await service.build_session(user=context.user, membership=context.membership)
     except InvalidCredentialsError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
 
@@ -255,8 +246,10 @@ async def update_staff(
             membership_id=membership_id,
             payload=payload,
         )
+    except StaffNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except StaffError as exc:
-        raise HTTPException(status_code=_staff_error_status(exc), detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.delete("/staff/{membership_id}", response_model=MessageResponse)
@@ -272,8 +265,10 @@ async def remove_staff(
             actor_user_id=context.user_id,
             membership_id=membership_id,
         )
+    except StaffNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except StaffError as exc:
-        raise HTTPException(status_code=_staff_error_status(exc), detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return MessageResponse(message="Staff member removed")
 
 
@@ -292,5 +287,7 @@ async def update_staff_status(
             membership_id=membership_id,
             payload=payload,
         )
+    except StaffNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except StaffError as exc:
-        raise HTTPException(status_code=_staff_error_status(exc), detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
