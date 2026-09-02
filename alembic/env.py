@@ -7,6 +7,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 import app.modules.auth.models  # noqa: F401 — register models for autogenerate
+import app.modules.inventory.models  # noqa: F401 — register models for autogenerate
 import app.modules.tenant.models  # noqa: F401 — register models for autogenerate
 from alembic import context
 from app.core.config import get_settings
