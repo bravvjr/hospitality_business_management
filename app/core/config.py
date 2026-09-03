@@ -1,8 +1,10 @@
 """Application configuration via environment variables (Pydantic Settings)."""
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEV_JWT_SECRET = "dev-only-change-me"
 
 
 class Settings(BaseSettings):
@@ -30,7 +32,7 @@ class Settings(BaseSettings):
 
     # Auth (ADR-003). Override JWT_SECRET_KEY in every non-local environment.
     jwt_secret_key: str = Field(
-        default="dev-only-change-me",
+        default=DEV_JWT_SECRET,
         description="HS256 signing secret; must be overridden outside local dev.",
     )
     jwt_algorithm: str = "HS256"
@@ -45,6 +47,29 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = True
     auth_rate_limit_max: int = 20
     auth_rate_limit_window_seconds: int = 60
+
+    # CORS — comma-separated origins for the separate Next.js frontend.
+    cors_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost:3000"],
+        description="Allowed browser origins (comma-separated in env).",
+    )
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value: str | list[str]) -> list[str]:
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
+
+
+def validate_runtime_settings(settings: Settings) -> None:
+    """Fail fast when required production settings are missing."""
+    if settings.environment in ("local", "ci"):
+        return
+    if settings.jwt_secret_key == DEV_JWT_SECRET:
+        raise RuntimeError(
+            "JWT_SECRET_KEY must be set to a non-default value outside local/ci environments"
+        )
 
 
 @lru_cache

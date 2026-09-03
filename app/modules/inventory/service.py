@@ -323,11 +323,13 @@ class InventoryService:
         )
         if product_unit is None:
             raise InventoryError("Unit is not configured for this product")
+        if movement_type == MOVEMENT_SALE and not product_unit.is_stock:
+            raise InventoryError("Unit is not enabled for stock tracking")
 
         factor = Decimal(product_unit.to_base_factor)
         delta_base = signed_entered_quantity * factor
 
-        level = await self._repo.ensure_stock_level(
+        level = await self._repo.lock_stock_level(
             tenant_id=tenant_id, product_id=payload.product_id
         )
         new_qty = Decimal(level.quantity_base) + delta_base

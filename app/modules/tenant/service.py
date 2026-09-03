@@ -3,6 +3,7 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.db import apply_tenant_context
 from app.modules.tenant.models import Tenant
 from app.modules.tenant.repository import TenantRepository
 from app.modules.tenant.schemas import SubTenantCreate
@@ -19,6 +20,7 @@ class TenantService:
         active_tenant_id: uuid.UUID,
         payload: SubTenantCreate,
     ) -> Tenant:
+        await apply_tenant_context(self._session, active_tenant_id)
         # Default the parent to the active tenant; otherwise it must be within the
         # active tenant's subtree so a caller can only build under what they manage.
         parent_id = payload.parent_tenant_id or active_tenant_id

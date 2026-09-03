@@ -8,8 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db import get_session
-from app.modules.auth.deps import TenantContext, require_permission
+from app.modules.auth.deps import TenantContext, get_tenant_session, require_permission
 from app.modules.auth.permissions import TENANT_READ, TENANT_WRITE
 from app.modules.tenant.schemas import SubTenantCreate, TenantRead
 from app.modules.tenant.service import TenantService
@@ -23,7 +22,7 @@ TenantWriter = Annotated[TenantContext, Depends(require_permission(TENANT_WRITE)
 @router.get("", response_model=list[TenantRead])
 async def list_sub_tenants(
     context: TenantReader,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ) -> list[TenantRead]:
     """Immediate children of the active tenant."""
     service = TenantService(session)
@@ -33,7 +32,7 @@ async def list_sub_tenants(
 @router.get("/tree", response_model=list[TenantRead])
 async def list_sub_tenant_tree(
     context: TenantReader,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ) -> list[TenantRead]:
     """All descendants of the active tenant (every level); build the tree client-side
     from each node's parent_tenant_id."""
@@ -45,7 +44,7 @@ async def list_sub_tenant_tree(
 async def create_sub_tenant(
     payload: SubTenantCreate,
     context: TenantWriter,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ) -> TenantRead:
     service = TenantService(session)
     try:

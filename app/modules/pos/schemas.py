@@ -58,6 +58,8 @@ class OrderRead(BaseModel):
     payments: list[PaymentRead]
     created_at: datetime
     updated_at: datetime
+    # Set on cash complete when amount_tendered_minor > total_minor.
+    change_minor: int | None = None
 
 
 class OrderCreateRequest(BaseModel):

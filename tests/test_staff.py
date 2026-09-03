@@ -67,6 +67,36 @@ async def test_cashier_cannot_manage_staff(client):
 
 
 @pytest.mark.integration
+async def test_cashier_cannot_write_inventory(client):
+    owner_resp, _, _ = await _register_owner(client)
+    cashier_email = f"cashier-{uuid.uuid4()}@example.com"
+
+    await client.post(
+        "/api/v1/auth/staff",
+        json={"email": cashier_email, "password": "cashier-pass-123", "role_key": "cashier"},
+        cookies=owner_resp.cookies,
+    )
+
+    login_resp = await client.post(
+        "/api/v1/auth/login",
+        json={"email": cashier_email, "password": "cashier-pass-123"},
+    )
+    assert login_resp.status_code == 200
+    cookies = login_resp.cookies
+
+    units = await client.get("/api/v1/inventory/units", cookies=cookies)
+    assert units.status_code == 200
+    kg_id = next(u["id"] for u in units.json() if u["key"] == "kg")
+
+    product = await client.post(
+        "/api/v1/inventory/products",
+        json={"name": "Sugar", "base_unit_id": kg_id, "unit_price_minor": 5000, "currency": "KES"},
+        cookies=cookies,
+    )
+    assert product.status_code == 403
+
+
+@pytest.mark.integration
 async def test_manager_cannot_assign_manager_role(client):
     owner_resp, _, _ = await _register_owner(client)
     manager_email = f"manager-{uuid.uuid4()}@example.com"

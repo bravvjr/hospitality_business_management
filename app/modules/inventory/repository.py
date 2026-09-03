@@ -3,6 +3,7 @@ import uuid
 from decimal import Decimal
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -93,6 +94,47 @@ class InventoryRepository:
             )
         )
         return result.scalar_one_or_none()
+
+    async def lock_stock_level(
+        self, *, tenant_id: uuid.UUID, product_id: uuid.UUID
+    ) -> StockLevel:
+        """Return the stock level row locked for update (creates at 0 if missing)."""
+        result = await self._session.execute(
+            select(StockLevel)
+            .where(
+                StockLevel.tenant_id == tenant_id,
+                StockLevel.product_id == product_id,
+            )
+            .with_for_update()
+        )
+        level = result.scalar_one_or_none()
+        if level is not None:
+            return level
+
+        self._session.add(
+            StockLevel(
+                tenant_id=tenant_id,
+                product_id=product_id,
+                quantity_base=Decimal("0"),
+            )
+        )
+        savepoint = await self._session.begin_nested()
+        try:
+            await self._session.flush()
+        except IntegrityError:
+            await savepoint.rollback()
+        else:
+            await savepoint.commit()
+
+        result = await self._session.execute(
+            select(StockLevel)
+            .where(
+                StockLevel.tenant_id == tenant_id,
+                StockLevel.product_id == product_id,
+            )
+            .with_for_update()
+        )
+        return result.scalar_one()
 
     async def list_stock_levels(
         self, *, tenant_id: uuid.UUID, limit: int, offset: int
@@ -201,6 +243,7 @@ class InventoryRepository:
     async def ensure_stock_level(
         self, *, tenant_id: uuid.UUID, product_id: uuid.UUID
     ) -> StockLevel:
+        """Ensure a stock level row exists without locking (e.g. product create)."""
         level = await self.get_stock_level(tenant_id=tenant_id, product_id=product_id)
         if level is not None:
             return level

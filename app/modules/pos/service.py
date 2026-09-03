@@ -115,6 +115,8 @@ class PosService:
         )
         if product_unit is None:
             raise PosError("Unit is not configured for this product")
+        if not product_unit.is_sales:
+            raise PosError("Unit is not enabled for sales")
 
         # Merge into existing line for same product+unit.
         existing = next(
@@ -250,7 +252,10 @@ class PosService:
         order.completed_at = now
         order.cashier_user_id = actor_user_id
         await self._session.commit()
-        return await self.get_order(tenant_id=tenant_id, order_id=order.id)
+        order_read = await self.get_order(tenant_id=tenant_id, order_id=order.id)
+        if payload.payment_method == METHOD_CASH and tendered > order.total_minor:
+            return order_read.model_copy(update={"change_minor": tendered - order.total_minor})
+        return order_read
 
     async def _require_open_order(
         self, *, tenant_id: uuid.UUID, order_id: uuid.UUID

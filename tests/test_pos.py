@@ -104,6 +104,7 @@ async def test_pos_sale_flow_cash_and_stock_deduction(client):
     assert body["status"] == "completed"
     assert body["payments"][0]["method"] == "cash"
     assert body["payments"][0]["amount_minor"] == 100000
+    assert body["change_minor"] == 20000
 
     levels = await client.get("/api/v1/inventory/stock/levels", cookies=cookies)
     level = next(row for row in levels.json()["items"] if row["product_id"] == product_id)
@@ -176,6 +177,49 @@ async def test_insufficient_stock_blocks_sale(client):
         cookies=cookies,
     )
     assert denied.status_code == 400
+
+
+@pytest.mark.integration
+async def test_rejects_non_sales_unit_on_order(client):
+    owner = await _register(client)
+    cookies = owner.cookies
+    units = await client.get("/api/v1/inventory/units", cookies=cookies)
+    kg_id = next(u["id"] for u in units.json() if u["key"] == "kg")
+    g_id = next(u["id"] for u in units.json() if u["key"] == "g")
+
+    product = await client.post(
+        "/api/v1/inventory/products",
+        json={
+            "name": "Flour",
+            "base_unit_id": kg_id,
+            "unit_price_minor": 10000,
+            "currency": "KES",
+        },
+        cookies=cookies,
+    )
+    product_id = product.json()["id"]
+
+    await client.post(
+        f"/api/v1/inventory/products/{product_id}/units",
+        json={
+            "unit_id": g_id,
+            "to_base_factor": "0.001",
+            "is_stock": True,
+            "is_purchase": True,
+            "is_recipe": True,
+            "is_sales": False,
+        },
+        cookies=cookies,
+    )
+
+    order = (await client.post("/api/v1/pos/orders", json={}, cookies=cookies)).json()
+    denied = await client.post(
+        f"/api/v1/pos/orders/{order['id']}/items",
+        json={"product_id": product_id, "quantity": "100", "unit_id": g_id},
+        cookies=cookies,
+    )
+    assert denied.status_code == 400
+    assert "sales" in denied.json()["detail"].lower()
 
 
 @pytest.mark.integration
