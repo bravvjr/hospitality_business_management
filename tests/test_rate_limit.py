@@ -19,9 +19,9 @@ async def test_login_is_rate_limited(rate_limited_client):
 
 @pytest.mark.unit
 def test_limiter_sliding_window():
-    from app.core.rate_limit import RateLimiter
+    from app.core.rate_limit import MemoryRateLimitBackend, RateLimiter
 
-    limiter = RateLimiter()
+    limiter = RateLimiter(MemoryRateLimitBackend())
     assert limiter.allow("k", max_requests=2, window_seconds=60)
     assert limiter.allow("k", max_requests=2, window_seconds=60)
     assert not limiter.allow("k", max_requests=2, window_seconds=60)

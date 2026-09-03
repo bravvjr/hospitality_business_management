@@ -33,8 +33,17 @@ services:
       # Migrations run as the owner role.
       MIGRATION_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hbm}:${POSTGRES_PASSWORD:-hbm}@db:5432/${POSTGRES_DB:-hbm}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-only-change-me}
+      RATE_LIMIT_BACKEND: ${RATE_LIMIT_BACKEND:-memory}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
     ports:
       - "8000:8000"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    profiles:
+      - redis
 
 volumes:
   pgdata:

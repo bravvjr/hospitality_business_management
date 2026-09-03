@@ -6,7 +6,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.core.config import Settings, get_settings
 from app.core.db import engine
-from app.core.rate_limit import get_limiter
+from app.core.rate_limit import reset_limiter
 from app.main import create_app
 
 
@@ -52,8 +52,14 @@ async def rate_limited_client():
         auth_rate_limit_max=3,
         auth_rate_limit_window_seconds=60,
     )
-    get_limiter().reset()
+    reset_limiter(
+        Settings(
+            rate_limit_enabled=True,
+            auth_rate_limit_max=3,
+            auth_rate_limit_window_seconds=60,
+        )
+    )
     async with _make_client(application) as ac:
         yield ac
-    get_limiter().reset()
+    reset_limiter(Settings(rate_limit_enabled=False))
     await engine.dispose()

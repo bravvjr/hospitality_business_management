@@ -45,6 +45,14 @@ class Settings(BaseSettings):
 
     # Rate limiting for sensitive auth endpoints (per client IP, per endpoint).
     rate_limit_enabled: bool = True
+    rate_limit_backend: str = Field(
+        default="memory",
+        description="Rate limit store: memory (default) or redis.",
+    )
+    redis_url: str | None = Field(
+        default=None,
+        description="Redis URL when rate_limit_backend=redis.",
+    )
     auth_rate_limit_max: int = 20
     auth_rate_limit_window_seconds: int = 60
 
