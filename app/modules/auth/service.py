@@ -24,6 +24,7 @@ from app.modules.auth.models import Membership, User
 from app.modules.auth.repository import AuthRepository
 from app.modules.auth.schemas import RegisterRequest, SessionRead, TenantSummary
 from app.modules.tenant.models import Tenant
+from app.modules.tenant.repository import TenantRepository
 
 
 class AuthService:
@@ -50,6 +51,7 @@ class AuthService:
         # Assign the role via the relationship so it stays loaded (no re-query).
         membership = Membership(user_id=user.id, tenant_id=tenant.id, role=owner_role)
         await self._repo.add(membership)
+        await TenantRepository(self._session).grant_default_entitlements(tenant.id)
         await self._session.commit()
 
         return await self._issue(user=user, source_membership=membership, tenant=tenant)
@@ -83,7 +85,15 @@ class AuthService:
             raise InvalidTokenError("Refresh token required")
 
         session_row = await self._repo.get_refresh_session(payload.jti)
-        if session_row is None or session_row.revoked_at is not None:
+        if session_row is None:
+            raise InvalidCredentialsError("Refresh token is no longer valid")
+        if session_row.revoked_at is not None:
+            # Reuse of a rotated/revoked token: revoke the whole session family.
+            await self._repo.revoke_all_refresh_sessions(
+                user_id=session_row.user_id,
+                tenant_id=session_row.tenant_id,
+            )
+            await self._session.commit()
             raise InvalidCredentialsError("Refresh token is no longer valid")
         if session_row.expires_at <= datetime.now(UTC):
             raise InvalidCredentialsError("Refresh token has expired")

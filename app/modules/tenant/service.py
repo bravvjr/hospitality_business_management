@@ -39,6 +39,10 @@ class TenantService:
             parent_tenant_id=parent_id,
         )
         await self._repo.add(child)
+        await self._session.flush()
+        # Grant entitlements under the child's RLS context (tenant_id must match app.tenant_id).
+        await apply_tenant_context(self._session, child.id)
+        await self._repo.grant_default_entitlements(child.id)
         await self._session.commit()
         # Load server-generated columns (created_at/updated_at) for the response.
         await self._session.refresh(child)

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pagination import Page, Pagination, page_from
-from app.modules.auth.deps import TenantContext, get_tenant_session, require_permission
+from app.modules.auth.deps import TenantContext, get_tenant_session
 from app.modules.inventory.permissions import INVENTORY_READ, INVENTORY_WRITE
 from app.modules.inventory.schemas import (
     ProductCreateRequest,
@@ -25,11 +25,13 @@ from app.modules.inventory.service import (
     InventoryNotFoundError,
     InventoryService,
 )
+from app.modules.tenant.deps import require_module
+from app.modules.tenant.entitlements import INVENTORY
 
 router = APIRouter()
 
-InventoryReader = Annotated[TenantContext, Depends(require_permission(INVENTORY_READ))]
-InventoryWriter = Annotated[TenantContext, Depends(require_permission(INVENTORY_WRITE))]
+InventoryReader = Annotated[TenantContext, Depends(require_module(INVENTORY, INVENTORY_READ))]
+InventoryWriter = Annotated[TenantContext, Depends(require_module(INVENTORY, INVENTORY_WRITE))]
 
 
 def _map_error(exc: InventoryError) -> HTTPException:

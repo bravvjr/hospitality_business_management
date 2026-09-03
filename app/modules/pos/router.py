@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pagination import Page, Pagination, page_from
-from app.modules.auth.deps import TenantContext, get_tenant_session, require_permission
+from app.modules.auth.deps import TenantContext, get_tenant_session
 from app.modules.pos.permissions import POS_READ, POS_WRITE
 from app.modules.pos.schemas import (
     CompleteSaleRequest,
@@ -16,11 +16,13 @@ from app.modules.pos.schemas import (
     OrderRead,
 )
 from app.modules.pos.service import PosError, PosNotFoundError, PosService
+from app.modules.tenant.deps import require_module
+from app.modules.tenant.entitlements import POS
 
 router = APIRouter()
 
-PosReader = Annotated[TenantContext, Depends(require_permission(POS_READ))]
-PosWriter = Annotated[TenantContext, Depends(require_permission(POS_WRITE))]
+PosReader = Annotated[TenantContext, Depends(require_module(POS, POS_READ))]
+PosWriter = Annotated[TenantContext, Depends(require_module(POS, POS_WRITE))]
 
 
 def _map_error(exc: PosError) -> HTTPException:

@@ -4,7 +4,8 @@ import uuid
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.tenant.models import Tenant
+from app.modules.tenant.entitlements import DEFAULT_MODULE_KEYS
+from app.modules.tenant.models import Tenant, TenantEntitlement
 
 
 class TenantRepository:
@@ -58,3 +59,19 @@ class TenantRepository:
         if candidate_id == root_id:
             return True
         return candidate_id in set(await self._descendant_ids(root_id))
+
+    async def is_module_enabled(self, *, tenant_id: uuid.UUID, module_key: str) -> bool:
+        result = await self._session.execute(
+            select(TenantEntitlement.enabled).where(
+                TenantEntitlement.tenant_id == tenant_id,
+                TenantEntitlement.module_key == module_key,
+            )
+        )
+        enabled = result.scalar_one_or_none()
+        return enabled is True
+
+    async def grant_default_entitlements(self, tenant_id: uuid.UUID) -> None:
+        for module_key in DEFAULT_MODULE_KEYS:
+            self._session.add(
+                TenantEntitlement(tenant_id=tenant_id, module_key=module_key, enabled=True)
+            )
