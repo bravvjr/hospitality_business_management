@@ -29,7 +29,14 @@ async def test_refresh_rotates_and_old_token_is_revoked(client):
     replay = await client.post("/api/v1/auth/refresh", cookies=reg.cookies)
     assert replay.status_code == 401
 
-    # The rotated token works.
+
+@pytest.mark.integration
+async def test_rotated_refresh_token_works_without_replay(client):
+    reg = await _register(client)
+
+    first = await client.post("/api/v1/auth/refresh", cookies=reg.cookies)
+    assert first.status_code == 200
+
     second = await client.post("/api/v1/auth/refresh", cookies=first.cookies)
     assert second.status_code == 200
 
@@ -43,6 +50,22 @@ async def test_logout_revokes_refresh_token(client):
 
     # The refresh token presented at logout can no longer be used.
     after = await client.post("/api/v1/auth/refresh", cookies=reg.cookies)
+    assert after.status_code == 401
+
+
+@pytest.mark.integration
+async def test_refresh_reuse_revokes_session_family(client):
+    reg = await _register(client)
+
+    first = await client.post("/api/v1/auth/refresh", cookies=reg.cookies)
+    assert first.status_code == 200
+
+    # Re-using the original (revoked) refresh token triggers family revocation.
+    replay = await client.post("/api/v1/auth/refresh", cookies=reg.cookies)
+    assert replay.status_code == 401
+
+    # The rotated token is also invalidated after reuse detection.
+    after = await client.post("/api/v1/auth/refresh", cookies=first.cookies)
     assert after.status_code == 401
 
 

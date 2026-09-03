@@ -183,6 +183,23 @@ class AuthRepository:
             .values(revoked_at=func.now())
         )
 
+    async def revoke_all_refresh_sessions(
+        self,
+        *,
+        user_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+    ) -> None:
+        """Revoke every active refresh session for a user within a tenant."""
+        await self._session.execute(
+            update(RefreshSession)
+            .where(
+                RefreshSession.user_id == user_id,
+                RefreshSession.tenant_id == tenant_id,
+                RefreshSession.revoked_at.is_(None),
+            )
+            .values(revoked_at=func.now())
+        )
+
     async def delete_expired_refresh_sessions(self, now: datetime) -> int:
         """Delete refresh sessions past their expiry (revoked or not); returns count."""
         result = await self._session.execute(
