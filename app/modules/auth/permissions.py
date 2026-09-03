@@ -15,3 +15,7 @@ INVENTORY_WRITE = "inventory.write"
 # POS module.
 POS_READ = "pos.read"
 POS_WRITE = "pos.write"
+
+# Expenses module.
+EXPENSES_READ = "expenses.read"
+EXPENSES_WRITE = "expenses.write"

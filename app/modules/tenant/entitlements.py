@@ -4,4 +4,4 @@ INVENTORY = "inventory"
 POS = "pos"
 FINANCE = "finance"
 
-DEFAULT_MODULE_KEYS = frozenset({INVENTORY, POS})
+DEFAULT_MODULE_KEYS = frozenset({INVENTORY, POS, FINANCE})
