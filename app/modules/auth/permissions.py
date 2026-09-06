@@ -19,3 +19,6 @@ POS_WRITE = "pos.write"
 # Expenses module.
 EXPENSES_READ = "expenses.read"
 EXPENSES_WRITE = "expenses.write"
+
+# Dashboard module.
+DASHBOARD_READ = "dashboard.read"
