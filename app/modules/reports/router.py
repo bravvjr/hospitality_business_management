@@ -1,4 +1,4 @@
-"""Reports HTTP routes (Phase 2a)."""
+"""Reports HTTP routes (Phase 2a/2b)."""
 from datetime import date
 from typing import Annotated
 
@@ -10,7 +10,11 @@ from app.modules.reports.permissions import REPORTS_READ
 from app.modules.reports.schemas import (
     ExpensesByCategoryRead,
     GroupBy,
+    InventoryMovementSummaryRead,
     PnlRead,
+    SalesByPaymentMethodRead,
+    SalesByProductRead,
+    SalesSortBy,
     SalesSummaryRead,
 )
 from app.modules.reports.service import ReportError, ReportsService
@@ -61,6 +65,67 @@ async def expenses_by_category(
             from_date=from_date,
             to_date=to_date,
             currency=currency,
+        )
+    except ReportError as exc:
+        raise _map_error(exc) from exc
+
+
+@router.get("/sales/by-product", response_model=SalesByProductRead)
+async def sales_by_product(
+    context: ReportsReader,
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    from_date: Annotated[date, Query(alias="from")],
+    to_date: Annotated[date, Query(alias="to")],
+    currency: Annotated[str | None, Query(min_length=3, max_length=3)] = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 10,
+    sort: Annotated[SalesSortBy, Query()] = "revenue",
+) -> SalesByProductRead:
+    try:
+        return await ReportsService(session).sales_by_product(
+            tenant_id=context.tenant_id,
+            from_date=from_date,
+            to_date=to_date,
+            currency=currency,
+            limit=limit,
+            sort_by=sort,
+        )
+    except ReportError as exc:
+        raise _map_error(exc) from exc
+
+
+@router.get("/sales/by-payment-method", response_model=SalesByPaymentMethodRead)
+async def sales_by_payment_method(
+    context: ReportsReader,
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    from_date: Annotated[date, Query(alias="from")],
+    to_date: Annotated[date, Query(alias="to")],
+    currency: Annotated[str | None, Query(min_length=3, max_length=3)] = None,
+) -> SalesByPaymentMethodRead:
+    try:
+        return await ReportsService(session).sales_by_payment_method(
+            tenant_id=context.tenant_id,
+            from_date=from_date,
+            to_date=to_date,
+            currency=currency,
+        )
+    except ReportError as exc:
+        raise _map_error(exc) from exc
+
+
+@router.get("/inventory/movements", response_model=InventoryMovementSummaryRead)
+async def inventory_movements(
+    context: ReportsReader,
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    from_date: Annotated[date, Query(alias="from")],
+    to_date: Annotated[date, Query(alias="to")],
+    movement_type: Annotated[str | None, Query(max_length=30)] = None,
+) -> InventoryMovementSummaryRead:
+    try:
+        return await ReportsService(session).inventory_movements(
+            tenant_id=context.tenant_id,
+            from_date=from_date,
+            to_date=to_date,
+            movement_type=movement_type,
         )
     except ReportError as exc:
         raise _map_error(exc) from exc

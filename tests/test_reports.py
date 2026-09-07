@@ -1,4 +1,4 @@
-"""Integration tests for Phase 2a reports module."""
+"""Integration tests for Phase 2a/2b reports module."""
 import uuid
 from datetime import date
 
@@ -20,13 +20,20 @@ async def _register(client, tenant_name: str = "Reports Cafe"):
     return resp
 
 
-async def _setup_sellable_product(client, cookies, *, price_minor: int = 10000):
+async def _setup_sellable_product(
+    client,
+    cookies,
+    *,
+    name: str = "Tea",
+    price_minor: int = 10000,
+    stock_quantity: str = "10",
+):
     units = await client.get("/api/v1/inventory/units", cookies=cookies)
     kg_id = next(u["id"] for u in units.json() if u["key"] == "kg")
     product = await client.post(
         "/api/v1/inventory/products",
         json={
-            "name": "Tea",
+            "name": name,
             "base_unit_id": kg_id,
             "unit_price_minor": price_minor,
             "currency": "KES",
@@ -40,7 +47,7 @@ async def _setup_sellable_product(client, cookies, *, price_minor: int = 10000):
         "/api/v1/inventory/stock/receipts",
         json={
             "product_id": product_id,
-            "quantity": "10",
+            "quantity": stock_quantity,
             "unit_id": kg_id,
             "reason": "purchase",
         },
@@ -191,3 +198,76 @@ async def test_cashier_cannot_access_reports(client):
         cookies=cashier_login.cookies,
     )
     assert denied.status_code == 403
+
+
+@pytest.mark.integration
+async def test_reports_sales_by_product_and_payment_method(client):
+    owner = await _register(client)
+    cookies = owner.cookies
+    tea_id, kg_id = await _setup_sellable_product(
+        client, cookies, name="Tea", price_minor=15000
+    )
+    chapati_id, _ = await _setup_sellable_product(
+        client, cookies, name="Chapati", price_minor=20000
+    )
+    tea_total = await _complete_sale(client, cookies, tea_id, kg_id, quantity="2")
+    chapati_total = await _complete_sale(client, cookies, chapati_id, kg_id, quantity="1")
+
+    today = str(date.today())
+    by_product = await client.get(
+        "/api/v1/reports/sales/by-product",
+        params={"from": today, "to": today, "sort": "revenue"},
+        cookies=cookies,
+    )
+    assert by_product.status_code == 200
+    products = by_product.json()["products"]
+    assert len(products) == 2
+    assert products[0]["product_name"] == "Tea"
+    assert products[0]["total_minor"] == tea_total
+    assert products[1]["product_name"] == "Chapati"
+    assert products[1]["total_minor"] == chapati_total
+
+    by_method = await client.get(
+        "/api/v1/reports/sales/by-payment-method",
+        params={"from": today, "to": today},
+        cookies=cookies,
+    )
+    assert by_method.status_code == 200
+    methods = by_method.json()["methods"]
+    assert len(methods) == 1
+    assert methods[0]["method"] == "cash"
+    assert methods[0]["total_minor"] == tea_total + chapati_total
+    assert methods[0]["payment_count"] == 2
+
+
+@pytest.mark.integration
+async def test_reports_inventory_movements(client):
+    owner = await _register(client)
+    cookies = owner.cookies
+    product_id, kg_id = await _setup_sellable_product(client, cookies, price_minor=10000)
+    await _complete_sale(client, cookies, product_id, kg_id, quantity="1")
+
+    today = str(date.today())
+    movements = await client.get(
+        "/api/v1/reports/inventory/movements",
+        params={"from": today, "to": today},
+        cookies=cookies,
+    )
+    assert movements.status_code == 200
+    types = {row["movement_type"]: row for row in movements.json()["types"]}
+    assert "receipt" in types
+    assert "sale" in types
+    assert types["receipt"]["movement_count"] == 1
+    assert types["sale"]["movement_count"] == 1
+    assert float(types["receipt"]["total_quantity_delta_base"]) == 10
+    assert float(types["sale"]["total_quantity_delta_base"]) == -1
+
+    sale_only = await client.get(
+        "/api/v1/reports/inventory/movements",
+        params={"from": today, "to": today, "movement_type": "sale"},
+        cookies=cookies,
+    )
+    assert sale_only.status_code == 200
+    sale_types = sale_only.json()["types"]
+    assert len(sale_types) == 1
+    assert sale_types[0]["movement_type"] == "sale"
