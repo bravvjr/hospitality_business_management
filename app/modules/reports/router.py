@@ -1,11 +1,14 @@
-"""Reports HTTP routes (Phase 2a/2b)."""
+"""Reports HTTP routes (Phase 2a/2b/2c)."""
 from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.auth.deps import TenantContext, get_tenant_session
+from app.modules.reports.deps import ReportsExportReader
+from app.modules.reports.exports import ReportExportKey
 from app.modules.reports.permissions import REPORTS_READ
 from app.modules.reports.schemas import (
     ExpensesByCategoryRead,
@@ -125,6 +128,35 @@ async def inventory_movements(
             tenant_id=context.tenant_id,
             from_date=from_date,
             to_date=to_date,
+            movement_type=movement_type,
+        )
+    except ReportError as exc:
+        raise _map_error(exc) from exc
+
+
+@router.get("/exports/{report_key}.csv")
+async def export_report_csv(
+    report_key: ReportExportKey,
+    context: ReportsExportReader,
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    from_date: Annotated[date, Query(alias="from")],
+    to_date: Annotated[date, Query(alias="to")],
+    currency: Annotated[str | None, Query(min_length=3, max_length=3)] = None,
+    group_by: Annotated[GroupBy | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 10,
+    sort: Annotated[SalesSortBy, Query()] = "revenue",
+    movement_type: Annotated[str | None, Query(max_length=30)] = None,
+) -> StreamingResponse:
+    try:
+        return await ReportsService(session).export_csv(
+            report_key=report_key,
+            tenant_id=context.tenant_id,
+            from_date=from_date,
+            to_date=to_date,
+            currency=currency,
+            group_by=group_by,
+            limit=limit,
+            sort_by=sort,
             movement_type=movement_type,
         )
     except ReportError as exc:

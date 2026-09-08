@@ -1,9 +1,20 @@
-"""Reports business logic (Phase 2a/2b)."""
+"""Reports business logic (Phase 2a/2b/2c)."""
 import uuid
 from datetime import date
 
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.reports.exports import (
+    REPORT_EXPORT_KEYS,
+    ReportExportKey,
+    export_expenses_by_category_csv,
+    export_inventory_movements_csv,
+    export_pnl_csv,
+    export_sales_by_payment_method_csv,
+    export_sales_by_product_csv,
+    export_sales_summary_csv,
+)
 from app.modules.reports.repository import ReportsRepository
 from app.modules.reports.schemas import (
     CategoryExpenseRead,
@@ -274,3 +285,70 @@ class ReportsService:
             movement_type=movement_type,
             types=types,
         )
+
+    async def export_csv(
+        self,
+        *,
+        report_key: ReportExportKey,
+        tenant_id: uuid.UUID,
+        from_date: date,
+        to_date: date,
+        currency: str | None = None,
+        group_by: GroupBy | None = None,
+        limit: int = 10,
+        sort_by: SalesSortBy = "revenue",
+        movement_type: str | None = None,
+    ) -> StreamingResponse:
+        if report_key not in REPORT_EXPORT_KEYS:
+            raise ReportError(f"Unknown report export key: {report_key}")
+
+        if report_key == "sales-summary":
+            report = await self.sales_summary(
+                tenant_id=tenant_id,
+                from_date=from_date,
+                to_date=to_date,
+                currency=currency,
+                group_by=group_by,
+            )
+            return export_sales_summary_csv(report)
+        if report_key == "sales-by-product":
+            report = await self.sales_by_product(
+                tenant_id=tenant_id,
+                from_date=from_date,
+                to_date=to_date,
+                currency=currency,
+                limit=limit,
+                sort_by=sort_by,
+            )
+            return export_sales_by_product_csv(report)
+        if report_key == "sales-by-payment-method":
+            report = await self.sales_by_payment_method(
+                tenant_id=tenant_id,
+                from_date=from_date,
+                to_date=to_date,
+                currency=currency,
+            )
+            return export_sales_by_payment_method_csv(report)
+        if report_key == "expenses-by-category":
+            report = await self.expenses_by_category(
+                tenant_id=tenant_id,
+                from_date=from_date,
+                to_date=to_date,
+                currency=currency,
+            )
+            return export_expenses_by_category_csv(report)
+        if report_key == "pnl":
+            report = await self.pnl(
+                tenant_id=tenant_id,
+                from_date=from_date,
+                to_date=to_date,
+                currency=currency,
+            )
+            return export_pnl_csv(report)
+        report = await self.inventory_movements(
+            tenant_id=tenant_id,
+            from_date=from_date,
+            to_date=to_date,
+            movement_type=movement_type,
+        )
+        return export_inventory_movements_csv(report)

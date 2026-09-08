@@ -271,3 +271,109 @@ async def test_reports_inventory_movements(client):
     sale_types = sale_only.json()["types"]
     assert len(sale_types) == 1
     assert sale_types[0]["movement_type"] == "sale"
+
+
+@pytest.mark.integration
+async def test_report_csv_exports(client):
+    owner = await _register(client)
+    cookies = owner.cookies
+    product_id, kg_id = await _setup_sellable_product(client, cookies, price_minor=12000)
+    sale_total = await _complete_sale(client, cookies, product_id, kg_id, quantity="1")
+
+    utilities_id = (
+        await client.post(
+            "/api/v1/expenses/categories",
+            json={"name": "Utilities"},
+            cookies=cookies,
+        )
+    ).json()["id"]
+    await client.post(
+        "/api/v1/expenses/expenses",
+        json={
+            "category_id": utilities_id,
+            "amount_minor": 4000,
+            "currency": "KES",
+            "description": "Water",
+            "expense_date": str(date.today()),
+        },
+        cookies=cookies,
+    )
+
+    today = str(date.today())
+    pnl_csv = await client.get(
+        "/api/v1/reports/exports/pnl.csv",
+        params={"from": today, "to": today},
+        cookies=cookies,
+    )
+    assert pnl_csv.status_code == 200
+    assert pnl_csv.headers["content-type"].startswith("text/csv")
+    assert "revenue_minor" in pnl_csv.text
+    assert str(sale_total) in pnl_csv.text
+    assert "4000" in pnl_csv.text
+
+    product_csv = await client.get(
+        "/api/v1/reports/exports/sales-by-product.csv",
+        params={"from": today, "to": today},
+        cookies=cookies,
+    )
+    assert product_csv.status_code == 200
+    assert "Tea" in product_csv.text
+
+    movements_csv = await client.get(
+        "/api/v1/reports/exports/inventory-movements.csv",
+        params={"from": today, "to": today},
+        cookies=cookies,
+    )
+    assert movements_csv.status_code == 200
+    assert "movement_type" in movements_csv.text
+    assert "receipt" in movements_csv.text
+
+
+@pytest.mark.integration
+async def test_report_export_rate_limited():
+    from httpx import ASGITransport, AsyncClient
+
+    from app.core.config import Settings, get_settings
+    from app.core.db import engine
+    from app.core.rate_limit import reset_limiter
+    from app.main import create_app
+
+    application = create_app()
+    application.dependency_overrides[get_settings] = lambda: Settings(
+        rate_limit_enabled=True,
+        reports_export_rate_limit_max=1,
+        reports_export_rate_limit_window_seconds=60,
+    )
+    reset_limiter(
+        Settings(
+            rate_limit_enabled=True,
+            reports_export_rate_limit_max=1,
+            reports_export_rate_limit_window_seconds=60,
+        )
+    )
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=application), base_url="http://test"
+        ) as client:
+            owner = await _register(client)
+            cookies = owner.cookies
+            today = str(date.today())
+            params = {"from": today, "to": today}
+
+            first = await client.get(
+                "/api/v1/reports/exports/pnl.csv",
+                params=params,
+                cookies=cookies,
+            )
+            assert first.status_code == 200
+
+            second = await client.get(
+                "/api/v1/reports/exports/pnl.csv",
+                params=params,
+                cookies=cookies,
+            )
+            assert second.status_code == 429
+    finally:
+        reset_limiter(Settings(rate_limit_enabled=False))
+        await engine.dispose()
