@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     )
     auth_rate_limit_max: int = 20
     auth_rate_limit_window_seconds: int = 60
+    reports_export_rate_limit_max: int = 10
+    reports_export_rate_limit_window_seconds: int = 60
 
     # CORS — comma-separated origins for the separate Next.js frontend.
     cors_origins: list[str] = Field(

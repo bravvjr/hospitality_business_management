@@ -22,3 +22,6 @@ EXPENSES_WRITE = "expenses.write"
 
 # Dashboard module.
 DASHBOARD_READ = "dashboard.read"
+
+# Reports module.
+REPORTS_READ = "reports.read"
