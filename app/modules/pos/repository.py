@@ -1,11 +1,12 @@
 """Data access for POS orders and payments."""
 import uuid
 
+import sqlalchemy as sa
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.modules.pos.models import Order, OrderItem, Payment
+from app.modules.pos.models import Order, OrderItem, Payment, PosReceiptSequence
 
 
 class PosRepository:
@@ -77,3 +78,21 @@ class PosRepository:
 
     async def flush(self) -> None:
         await self._session.flush()
+
+    async def allocate_receipt_number(self, *, tenant_id: uuid.UUID) -> int:
+        result = await self._session.execute(
+            sa.update(PosReceiptSequence)
+            .where(PosReceiptSequence.tenant_id == tenant_id)
+            .values(
+                next_receipt_number=PosReceiptSequence.next_receipt_number + 1,
+            )
+            .returning(PosReceiptSequence.next_receipt_number - 1)
+        )
+        row = result.first()
+        if row is not None:
+            return int(row[0])
+
+        sequence = PosReceiptSequence(tenant_id=tenant_id, next_receipt_number=2)
+        self._session.add(sequence)
+        await self._session.flush()
+        return 1

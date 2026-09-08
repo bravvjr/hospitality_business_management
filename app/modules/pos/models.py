@@ -9,6 +9,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    BigInteger,
     DateTime,
     ForeignKey,
     Integer,
@@ -40,6 +41,7 @@ class Order(UUIDMixin, TimestampMixin, Base):
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    receipt_number: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     note: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     items: Mapped[list["OrderItem"]] = relationship(
@@ -106,3 +108,14 @@ class Payment(UUIDMixin, TimestampMixin, Base):
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<Payment id={self.id} method={self.method!r} status={self.status!r}>"
+
+
+class PosReceiptSequence(Base):
+    """Per-tenant monotonic receipt counter for completed POS sales."""
+
+    __tablename__ = "pos_receipt_sequences"
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(), ForeignKey("tenants.id", ondelete="CASCADE"), primary_key=True
+    )
+    next_receipt_number: Mapped[int] = mapped_column(BigInteger, nullable=False, default=1)
