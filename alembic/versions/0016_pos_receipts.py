@@ -1,7 +1,7 @@
-"""POS sale receipts (migration 0014)
+"""POS sale receipts (migration 0016)
 
-Revision ID: 0014
-Revises: 0013
+Revision ID: 0016
+Revises: 0015
 Create Date: 2026-09-08
 """
 import os
@@ -11,8 +11,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "0014"
-down_revision: str | None = "0013"
+revision: str = "0016"
+down_revision: str | None = "0015"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
