@@ -53,6 +53,7 @@ class OrderRead(BaseModel):
     total_minor: int
     cashier_user_id: uuid.UUID | None
     completed_at: datetime | None
+    receipt_number: int | None = None
     note: str | None
     items: list[OrderItemRead]
     payments: list[PaymentRead]
@@ -71,3 +72,32 @@ class CompleteSaleRequest(BaseModel):
     payment_method: str = Field(pattern="^(cash|mpesa)$")
     # For cash: amount tendered in minor units (must be >= total). Defaults to total.
     amount_tendered_minor: int | None = Field(default=None, ge=0)
+
+
+class SaleReceiptLineRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    product_name: str
+    quantity: Decimal
+    unit_price_minor: int
+    line_total_minor: int
+
+
+class SaleReceiptPaymentRead(BaseModel):
+    method: str
+    amount_minor: int
+    change_minor: int | None = None
+
+
+class SaleReceiptRead(BaseModel):
+    receipt_number: int
+    order_id: uuid.UUID
+    business_name: str
+    currency: str
+    completed_at: datetime
+    cashier_email: str | None
+    items: list[SaleReceiptLineRead]
+    subtotal_minor: int
+    total_minor: int
+    payments: list[SaleReceiptPaymentRead]
+    note: str | None = None

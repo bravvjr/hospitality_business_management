@@ -5,6 +5,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.auth.repository import AuthRepository
 from app.modules.inventory.service import InventoryError, InventoryService
 from app.modules.pos.models import Order, OrderItem, Payment
 from app.modules.pos.repository import PosRepository
@@ -14,6 +15,9 @@ from app.modules.pos.schemas import (
     OrderItemCreateRequest,
     OrderItemUpdateRequest,
     OrderRead,
+    SaleReceiptLineRead,
+    SaleReceiptPaymentRead,
+    SaleReceiptRead,
 )
 from app.modules.tenant.repository import TenantRepository
 
@@ -251,11 +255,74 @@ class PosService:
         order.status = STATUS_COMPLETED
         order.completed_at = now
         order.cashier_user_id = actor_user_id
+        order.receipt_number = await self._repo.allocate_receipt_number(
+            tenant_id=tenant_id
+        )
         await self._session.commit()
         order_read = await self.get_order(tenant_id=tenant_id, order_id=order.id)
         if payload.payment_method == METHOD_CASH and tendered > order.total_minor:
             return order_read.model_copy(update={"change_minor": tendered - order.total_minor})
         return order_read
+
+    async def get_receipt(
+        self, *, tenant_id: uuid.UUID, order_id: uuid.UUID
+    ) -> SaleReceiptRead:
+        order = await self._repo.get_order(tenant_id=tenant_id, order_id=order_id)
+        if order is None:
+            raise PosNotFoundError("Order not found")
+        if order.status != STATUS_COMPLETED:
+            raise PosError("Receipt is only available for completed sales")
+        if order.receipt_number is None or order.completed_at is None:
+            raise PosError("Receipt is not available for this sale")
+
+        tenant = await self._tenants.get(tenant_id)
+        if tenant is None:
+            raise PosError("Tenant is unavailable")
+
+        cashier_email: str | None = None
+        if order.cashier_user_id is not None:
+            cashier = await AuthRepository(self._session).get_user_by_id(
+                order.cashier_user_id
+            )
+            if cashier is not None:
+                cashier_email = cashier.email
+
+        payments = []
+        for payment in order.payments:
+            if payment.status != "completed":
+                continue
+            change_minor = None
+            if payment.method == METHOD_CASH and payment.amount_minor > order.total_minor:
+                change_minor = payment.amount_minor - order.total_minor
+            payments.append(
+                SaleReceiptPaymentRead(
+                    method=payment.method,
+                    amount_minor=payment.amount_minor,
+                    change_minor=change_minor,
+                )
+            )
+
+        return SaleReceiptRead(
+            receipt_number=int(order.receipt_number),
+            order_id=order.id,
+            business_name=tenant.name,
+            currency=order.currency,
+            completed_at=order.completed_at,
+            cashier_email=cashier_email,
+            items=[
+                SaleReceiptLineRead(
+                    product_name=item.product_name,
+                    quantity=Decimal(item.quantity),
+                    unit_price_minor=item.unit_price_minor,
+                    line_total_minor=item.line_total_minor,
+                )
+                for item in order.items
+            ],
+            subtotal_minor=order.subtotal_minor,
+            total_minor=order.total_minor,
+            payments=payments,
+            note=order.note,
+        )
 
     async def _require_open_order(
         self, *, tenant_id: uuid.UUID, order_id: uuid.UUID

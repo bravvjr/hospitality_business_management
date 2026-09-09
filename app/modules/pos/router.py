@@ -3,17 +3,20 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import PlainTextResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pagination import Page, Pagination, page_from
 from app.modules.auth.deps import TenantContext, get_tenant_session
 from app.modules.pos.permissions import POS_READ, POS_WRITE
+from app.modules.pos.receipt import render_receipt_text
 from app.modules.pos.schemas import (
     CompleteSaleRequest,
     OrderCreateRequest,
     OrderItemCreateRequest,
     OrderItemUpdateRequest,
     OrderRead,
+    SaleReceiptRead,
 )
 from app.modules.pos.service import PosError, PosNotFoundError, PosService
 from app.modules.tenant.deps import require_module
@@ -143,6 +146,40 @@ async def complete_sale(
             order_id=order_id,
             actor_user_id=context.user_id,
             payload=payload,
+        )
+    except PosError as exc:
+        raise _map_error(exc) from exc
+
+
+@router.get("/orders/{order_id}/receipt", response_model=SaleReceiptRead)
+async def get_sale_receipt(
+    order_id: uuid.UUID,
+    context: PosReader,
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+) -> SaleReceiptRead:
+    try:
+        return await PosService(session).get_receipt(
+            tenant_id=context.tenant_id, order_id=order_id
+        )
+    except PosError as exc:
+        raise _map_error(exc) from exc
+
+
+@router.get("/orders/{order_id}/receipt.txt", response_class=PlainTextResponse)
+async def get_sale_receipt_text(
+    order_id: uuid.UUID,
+    context: PosReader,
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+) -> Response:
+    try:
+        receipt = await PosService(session).get_receipt(
+            tenant_id=context.tenant_id, order_id=order_id
+        )
+        body = render_receipt_text(receipt)
+        filename = f"receipt-{receipt.receipt_number}.txt"
+        return PlainTextResponse(
+            content=body,
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
         )
     except PosError as exc:
         raise _map_error(exc) from exc
