@@ -17,7 +17,9 @@ RUN pip install --upgrade pip \
 
 COPY . .
 
-RUN chmod +x /app/scripts/entrypoint.sh
+# Strip CRLF from shell scripts (Windows checkouts) so the shebang stays valid.
+RUN sed -i 's/\r$//' /app/scripts/entrypoint.sh \
+    && chmod +x /app/scripts/entrypoint.sh
 
 EXPOSE 8000
 ENTRYPOINT ["/app/scripts/entrypoint.sh"]
