@@ -26,14 +26,13 @@ in Notion. Read the relevant pages **before** implementing a feature:
 
 ## Current focus (backend)
 
-**Phase 1 — Foundation + Inventory + POS.** Completed in this repo: project structure,
-Docker/local dev, Postgres + migrations, health endpoints, GitHub Actions CI, JWT auth
-+ tenant context, staff management, permissions, RLS, sub-tenants, refresh-token rotation,
-rate limiting, inventory ledger (ADR-005), and POS cash sales with inventory deduction
-(ADR-006).
-**Next:** expenses module (then dashboard).
-Update the Notion roadmap when a checklist item is done — do not duplicate the full
-checklist here.
+**Phase 1 API is complete on `main`:** foundation, auth/RBAC/RLS, entitlements, inventory
+ledger (ADR-005), POS cash sales + receipts (ADR-006), expenses, dashboard, and reports
+exports. Frontend Phase 1 screens live in the separate `hospitality_business_management_fe`
+repo.
+**Next (Phase 2):** recipes / ingredient consumption for menu items, then remaining
+integrated-ops items. Update the Notion roadmap when a checklist item is done — do not
+duplicate the full checklist here.
 - **Architecture Decision Records (ADRs)**: https://app.notion.com/p/3cd89b75501c814fa389e77472d40d03
 
 ## Repository scope
