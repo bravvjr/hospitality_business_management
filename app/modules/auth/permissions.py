@@ -25,3 +25,7 @@ DASHBOARD_READ = "dashboard.read"
 
 # Reports module.
 REPORTS_READ = "reports.read"
+
+# Recipes / BOM module.
+RECIPES_READ = "recipes.read"
+RECIPES_WRITE = "recipes.write"
