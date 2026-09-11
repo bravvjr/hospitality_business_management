@@ -1,5 +1,6 @@
-"""Integration tests for Phase 2a recipes / BOM module."""
+"""Integration tests for Phase 2a recipes / BOM module and Phase 2b POS consumption."""
 import uuid
+from decimal import Decimal
 
 import pytest
 
@@ -165,3 +166,170 @@ async def test_recipe_rejects_meal_as_ingredient(client):
         cookies=cookies,
     )
     assert response.status_code == 400
+
+
+async def _stock_in(client, cookies, product_id, unit_id, quantity: str):
+    receipt = await client.post(
+        "/api/v1/inventory/stock/receipts",
+        json={
+            "product_id": product_id,
+            "quantity": quantity,
+            "unit_id": unit_id,
+            "reason": "purchase",
+        },
+        cookies=cookies,
+    )
+    assert receipt.status_code == 201
+
+
+async def _level_base(client, cookies, product_id) -> Decimal:
+    levels = await client.get("/api/v1/inventory/stock/levels", cookies=cookies)
+    assert levels.status_code == 200
+    row = next(r for r in levels.json()["items"] if r["product_id"] == product_id)
+    return Decimal(row["quantity_base"])
+
+
+@pytest.mark.integration
+async def test_sale_with_recipe_deducts_ingredients_not_meal(client):
+    owner = await _register(client)
+    cookies = owner.cookies
+
+    meal_id, kg_id = await _create_product(
+        client, cookies, name="Burger Meal", price_minor=50000
+    )
+    flour_id, _ = await _create_product(client, cookies, name="Flour")
+    beef_id, _ = await _create_product(client, cookies, name="Beef Patty")
+
+    await _stock_in(client, cookies, flour_id, kg_id, "10")
+    await _stock_in(client, cookies, beef_id, kg_id, "10")
+
+    recipe = await client.post(
+        "/api/v1/recipes",
+        json={
+            "product_id": meal_id,
+            "yields_quantity": "1",
+            "items": [
+                {"ingredient_product_id": flour_id, "quantity": "0.1", "unit_id": kg_id},
+                {"ingredient_product_id": beef_id, "quantity": "0.2", "unit_id": kg_id},
+            ],
+        },
+        cookies=cookies,
+    )
+    assert recipe.status_code == 201
+
+    order = await client.post("/api/v1/pos/orders", json={}, cookies=cookies)
+    order_id = order.json()["id"]
+    await client.post(
+        f"/api/v1/pos/orders/{order_id}/items",
+        json={"product_id": meal_id, "quantity": "2", "unit_id": kg_id},
+        cookies=cookies,
+    )
+
+    completed = await client.post(
+        f"/api/v1/pos/orders/{order_id}/complete",
+        json={"payment_method": "cash"},
+        cookies=cookies,
+    )
+    assert completed.status_code == 200
+
+    # Meal has no stock receipt; ingredients are consumed instead.
+    flour_level = await _level_base(client, cookies, flour_id)
+    beef_level = await _level_base(client, cookies, beef_id)
+    assert flour_level == Decimal("9.8")  # 10 - (0.1 * 2)
+    assert beef_level == Decimal("9.6")  # 10 - (0.2 * 2)
+
+    levels_resp = await client.get("/api/v1/inventory/stock/levels", cookies=cookies)
+    meal_levels = [r for r in levels_resp.json()["items"] if r["product_id"] == meal_id]
+    assert len(meal_levels) == 1
+    assert Decimal(meal_levels[0]["quantity_base"]) == Decimal("0")
+
+
+@pytest.mark.integration
+async def test_insufficient_ingredient_blocks_recipe_sale(client):
+    owner = await _register(client)
+    cookies = owner.cookies
+
+    meal_id, kg_id = await _create_product(
+        client, cookies, name="Pasta Bowl", price_minor=30000
+    )
+    pasta_id, _ = await _create_product(client, cookies, name="Pasta")
+    sauce_id, _ = await _create_product(client, cookies, name="Sauce")
+
+    await _stock_in(client, cookies, pasta_id, kg_id, "0.5")
+    await _stock_in(client, cookies, sauce_id, kg_id, "10")
+
+    await client.post(
+        "/api/v1/recipes",
+        json={
+            "product_id": meal_id,
+            "items": [
+                {"ingredient_product_id": pasta_id, "quantity": "0.3", "unit_id": kg_id},
+                {"ingredient_product_id": sauce_id, "quantity": "0.1", "unit_id": kg_id},
+            ],
+        },
+        cookies=cookies,
+    )
+
+    order = await client.post("/api/v1/pos/orders", json={}, cookies=cookies)
+    order_id = order.json()["id"]
+    await client.post(
+        f"/api/v1/pos/orders/{order_id}/items",
+        json={"product_id": meal_id, "quantity": "2", "unit_id": kg_id},
+        cookies=cookies,
+    )
+
+    denied = await client.post(
+        f"/api/v1/pos/orders/{order_id}/complete",
+        json={"payment_method": "cash"},
+        cookies=cookies,
+    )
+    assert denied.status_code == 400
+
+    assert await _level_base(client, cookies, pasta_id) == Decimal("0.5")
+    assert await _level_base(client, cookies, sauce_id) == Decimal("10")
+
+
+@pytest.mark.integration
+async def test_inactive_recipe_falls_back_to_sell_as_stocked(client):
+    owner = await _register(client)
+    cookies = owner.cookies
+
+    meal_id, kg_id = await _create_product(
+        client, cookies, name="Soup", price_minor=15000
+    )
+    carrot_id, _ = await _create_product(client, cookies, name="Carrot")
+
+    await _stock_in(client, cookies, meal_id, kg_id, "5")
+
+    recipe = await client.post(
+        "/api/v1/recipes",
+        json={
+            "product_id": meal_id,
+            "items": [
+                {"ingredient_product_id": carrot_id, "quantity": "0.1", "unit_id": kg_id},
+            ],
+        },
+        cookies=cookies,
+    )
+    recipe_id = recipe.json()["id"]
+    await client.patch(
+        f"/api/v1/recipes/{recipe_id}",
+        json={"status": "inactive"},
+        cookies=cookies,
+    )
+
+    order = await client.post("/api/v1/pos/orders", json={}, cookies=cookies)
+    order_id = order.json()["id"]
+    await client.post(
+        f"/api/v1/pos/orders/{order_id}/items",
+        json={"product_id": meal_id, "quantity": "1", "unit_id": kg_id},
+        cookies=cookies,
+    )
+
+    completed = await client.post(
+        f"/api/v1/pos/orders/{order_id}/complete",
+        json={"payment_method": "cash"},
+        cookies=cookies,
+    )
+    assert completed.status_code == 200
+    assert await _level_base(client, cookies, meal_id) == Decimal("4")

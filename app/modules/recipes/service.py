@@ -1,9 +1,11 @@
-"""Recipe / BOM business logic (Phase 2a)."""
+"""Recipe / BOM business logic (Phase 2a + 2b consumption)."""
 import uuid
+from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.inventory.repository import InventoryRepository
+from app.modules.inventory.service import InventoryService
 from app.modules.recipes.models import Recipe, RecipeItem
 from app.modules.recipes.repository import RecipeRepository
 from app.modules.recipes.schemas import (
@@ -186,6 +188,49 @@ class RecipeService:
         )
         assert refreshed is not None
         return RecipeItemRead.model_validate(refreshed)
+
+    async def consume_for_sale_line(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        actor_user_id: uuid.UUID,
+        order_id: uuid.UUID,
+        order_item_id: uuid.UUID,
+        product_id: uuid.UUID,
+        quantity: Decimal,
+        to_base_factor_snapshot: Decimal,
+        inventory: InventoryService,
+        source_document_id: str,
+        commit: bool = False,
+    ) -> bool:
+        """Deduct ingredient stock when the sold product has an active recipe.
+
+        Returns True when recipe consumption was applied. When there is no recipe,
+        it is inactive, or it has no items, returns False so the caller can fall
+        back to deducting the sold product directly (sell-as-stocked).
+        """
+        recipe = await self._repo.get_recipe_by_product(
+            tenant_id=tenant_id, product_id=product_id
+        )
+        if recipe is None or recipe.status != "active" or not recipe.items:
+            return False
+
+        order_base_qty = quantity * to_base_factor_snapshot
+        batch_multiplier = order_base_qty / Decimal(recipe.yields_quantity)
+
+        for recipe_item in recipe.items:
+            ingredient_qty = Decimal(recipe_item.quantity) * batch_multiplier
+            await inventory.record_sale_deduction(
+                tenant_id=tenant_id,
+                actor_user_id=actor_user_id,
+                product_id=recipe_item.ingredient_product_id,
+                quantity=ingredient_qty,
+                unit_id=recipe_item.unit_id,
+                source_document_id=source_document_id,
+                idempotency_key=f"sale:{order_item_id}:{recipe_item.id}",
+                commit=commit,
+            )
+        return True
 
     async def delete_item(
         self,
