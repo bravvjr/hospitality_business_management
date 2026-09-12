@@ -59,6 +59,9 @@ class Product(UUIDMixin, TimestampMixin, Base):
     # Sell price in minor units (e.g. cents); NULL = not for sale / unset.
     unit_price_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
     currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    # Purchase / ingredient cost per base unit (minor units); NULL = unset.
+    unit_cost_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
 
     base_unit: Mapped["Unit"] = relationship()

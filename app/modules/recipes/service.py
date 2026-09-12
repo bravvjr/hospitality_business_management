@@ -1,6 +1,6 @@
-"""Recipe / BOM business logic (Phase 2a + 2b consumption)."""
+"""Recipe / BOM business logic (Phase 2a + 2b consumption + costing)."""
 import uuid
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +9,8 @@ from app.modules.inventory.service import InventoryService
 from app.modules.recipes.models import Recipe, RecipeItem
 from app.modules.recipes.repository import RecipeRepository
 from app.modules.recipes.schemas import (
+    RecipeCostLineRead,
+    RecipeCostRead,
     RecipeCreateRequest,
     RecipeItemCreateRequest,
     RecipeItemRead,
@@ -17,6 +19,7 @@ from app.modules.recipes.schemas import (
     RecipeSummaryRead,
     RecipeUpdateRequest,
 )
+from app.modules.tenant.repository import TenantRepository
 
 
 class RecipeError(Exception):
@@ -188,6 +191,108 @@ class RecipeService:
         )
         assert refreshed is not None
         return RecipeItemRead.model_validate(refreshed)
+
+    async def get_recipe_cost(
+        self, *, tenant_id: uuid.UUID, recipe_id: uuid.UUID
+    ) -> RecipeCostRead:
+        recipe = await self._repo.get_recipe(tenant_id=tenant_id, recipe_id=recipe_id)
+        if recipe is None:
+            raise RecipeNotFoundError("Recipe not found")
+
+        tenant = await TenantRepository(self._session).get(tenant_id)
+        if tenant is None:
+            raise RecipeError("Tenant is unavailable")
+
+        currency = tenant.base_currency.upper()
+        lines: list[RecipeCostLineRead] = []
+        total_cost_minor = 0
+        is_complete = True
+
+        for item in recipe.items:
+            product_unit = await self._inventory.get_product_unit(
+                tenant_id=tenant_id,
+                product_id=item.ingredient_product_id,
+                unit_id=item.unit_id,
+            )
+            if product_unit is None:
+                raise RecipeError("Ingredient unit is not configured")
+
+            ingredient = item.ingredient_product
+            base_qty = Decimal(item.quantity) * Decimal(product_unit.to_base_factor)
+            unit_cost = ingredient.unit_cost_minor
+            cost_currency = (
+                ingredient.cost_currency.upper()
+                if ingredient.cost_currency
+                else None
+            )
+            line_cost_minor: int | None = None
+
+            if unit_cost is None or cost_currency is None:
+                is_complete = False
+            elif cost_currency != currency:
+                is_complete = False
+            else:
+                line_cost_minor = int(
+                    (base_qty * Decimal(unit_cost)).quantize(
+                        Decimal("1"), rounding=ROUND_HALF_UP
+                    )
+                )
+                total_cost_minor += line_cost_minor
+
+            lines.append(
+                RecipeCostLineRead(
+                    recipe_item_id=item.id,
+                    ingredient_product_id=item.ingredient_product_id,
+                    ingredient_name=ingredient.name,
+                    quantity=item.quantity,
+                    unit=item.unit,
+                    unit_cost_minor=unit_cost,
+                    line_cost_minor=line_cost_minor,
+                    currency=cost_currency,
+                )
+            )
+
+        if not recipe.items:
+            is_complete = False
+
+        cost_per_yield_minor: int | None = None
+        if is_complete and recipe.items:
+            cost_per_yield = (
+                Decimal(total_cost_minor) / Decimal(recipe.yields_quantity)
+            ).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+            cost_per_yield_minor = int(cost_per_yield)
+
+        sell_price_minor = recipe.product.unit_price_minor
+        sell_currency = (
+            recipe.product.currency.upper() if recipe.product.currency else None
+        )
+        margin_minor: int | None = None
+        margin_percent: Decimal | None = None
+        if (
+            is_complete
+            and cost_per_yield_minor is not None
+            and sell_price_minor is not None
+            and sell_currency == currency
+        ):
+            margin_minor = sell_price_minor - cost_per_yield_minor
+            if sell_price_minor > 0:
+                margin_percent = (
+                    Decimal(margin_minor) / Decimal(sell_price_minor) * Decimal("100")
+                ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+        return RecipeCostRead(
+            recipe_id=recipe.id,
+            product_id=recipe.product_id,
+            currency=currency,
+            yields_quantity=recipe.yields_quantity,
+            total_cost_minor=total_cost_minor if is_complete else None,
+            cost_per_yield_minor=cost_per_yield_minor,
+            sell_price_minor=sell_price_minor if sell_currency == currency else None,
+            margin_minor=margin_minor,
+            margin_percent=margin_percent,
+            is_complete=is_complete,
+            lines=lines,
+        )
 
     async def consume_for_sale_line(
         self,

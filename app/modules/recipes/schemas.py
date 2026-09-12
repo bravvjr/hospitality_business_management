@@ -62,6 +62,31 @@ class RecipeRead(BaseModel):
     updated_at: datetime
 
 
+class RecipeCostLineRead(BaseModel):
+    recipe_item_id: uuid.UUID
+    ingredient_product_id: uuid.UUID
+    ingredient_name: str
+    quantity: Decimal
+    unit: UnitRead
+    unit_cost_minor: int | None
+    line_cost_minor: int | None
+    currency: str | None
+
+
+class RecipeCostRead(BaseModel):
+    recipe_id: uuid.UUID
+    product_id: uuid.UUID
+    currency: str
+    yields_quantity: Decimal
+    total_cost_minor: int | None
+    cost_per_yield_minor: int | None
+    sell_price_minor: int | None
+    margin_minor: int | None
+    margin_percent: Decimal | None
+    is_complete: bool
+    lines: list[RecipeCostLineRead]
+
+
 class RecipeSummaryRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
