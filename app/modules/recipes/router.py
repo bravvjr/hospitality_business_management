@@ -9,6 +9,7 @@ from app.core.pagination import Page, Pagination, page_from
 from app.modules.auth.deps import TenantContext, get_tenant_session
 from app.modules.recipes.permissions import RECIPES_READ, RECIPES_WRITE
 from app.modules.recipes.schemas import (
+    RecipeCostRead,
     RecipeCreateRequest,
     RecipeItemCreateRequest,
     RecipeItemRead,
@@ -58,6 +59,20 @@ async def create_recipe(
     try:
         return await RecipeService(session).create_recipe(
             tenant_id=context.tenant_id, payload=payload
+        )
+    except RecipeError as exc:
+        raise _map_error(exc) from exc
+
+
+@router.get("/{recipe_id}/cost", response_model=RecipeCostRead)
+async def get_recipe_cost(
+    recipe_id: uuid.UUID,
+    context: RecipesReader,
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+) -> RecipeCostRead:
+    try:
+        return await RecipeService(session).get_recipe_cost(
+            tenant_id=context.tenant_id, recipe_id=recipe_id
         )
     except RecipeError as exc:
         raise _map_error(exc) from exc

@@ -333,3 +333,106 @@ async def test_inactive_recipe_falls_back_to_sell_as_stocked(client):
     )
     assert completed.status_code == 200
     assert await _level_base(client, cookies, meal_id) == Decimal("4")
+
+
+@pytest.mark.integration
+async def test_recipe_cost_with_ingredient_unit_costs(client):
+    owner = await _register(client)
+    cookies = owner.cookies
+
+    meal_id, kg_id = await _create_product(
+        client, cookies, name="Taco Plate", price_minor=80000
+    )
+    tortilla_id, _ = await _create_product(client, cookies, name="Tortilla")
+    filling_id, _ = await _create_product(client, cookies, name="Filling")
+
+    await client.patch(
+        f"/api/v1/inventory/products/{tortilla_id}",
+        json={"unit_cost_minor": 5000, "cost_currency": "KES"},
+        cookies=cookies,
+    )
+    await client.patch(
+        f"/api/v1/inventory/products/{filling_id}",
+        json={"unit_cost_minor": 20000, "cost_currency": "KES"},
+        cookies=cookies,
+    )
+
+    recipe = await client.post(
+        "/api/v1/recipes",
+        json={
+            "product_id": meal_id,
+            "yields_quantity": "1",
+            "items": [
+                {
+                    "ingredient_product_id": tortilla_id,
+                    "quantity": "0.05",
+                    "unit_id": kg_id,
+                },
+                {
+                    "ingredient_product_id": filling_id,
+                    "quantity": "0.1",
+                    "unit_id": kg_id,
+                },
+            ],
+        },
+        cookies=cookies,
+    )
+    recipe_id = recipe.json()["id"]
+
+    cost = await client.get(f"/api/v1/recipes/{recipe_id}/cost", cookies=cookies)
+    assert cost.status_code == 200
+    body = cost.json()
+    assert body["is_complete"] is True
+    assert body["currency"] == "KES"
+    # 0.05 * 5000 + 0.1 * 20000 = 250 + 2000 = 2250
+    assert body["total_cost_minor"] == 2250
+    assert body["cost_per_yield_minor"] == 2250
+    assert body["sell_price_minor"] == 80000
+    assert body["margin_minor"] == 77750
+    assert len(body["lines"]) == 2
+
+
+@pytest.mark.integration
+async def test_recipe_cost_incomplete_when_ingredient_missing_cost(client):
+    owner = await _register(client)
+    cookies = owner.cookies
+
+    meal_id, kg_id = await _create_product(
+        client, cookies, name="Salad Bowl", price_minor=40000
+    )
+    lettuce_id, _ = await _create_product(client, cookies, name="Lettuce")
+    dressing_id, _ = await _create_product(client, cookies, name="Dressing")
+
+    await client.patch(
+        f"/api/v1/inventory/products/{lettuce_id}",
+        json={"unit_cost_minor": 3000, "cost_currency": "KES"},
+        cookies=cookies,
+    )
+
+    recipe = await client.post(
+        "/api/v1/recipes",
+        json={
+            "product_id": meal_id,
+            "items": [
+                {
+                    "ingredient_product_id": lettuce_id,
+                    "quantity": "0.2",
+                    "unit_id": kg_id,
+                },
+                {
+                    "ingredient_product_id": dressing_id,
+                    "quantity": "0.05",
+                    "unit_id": kg_id,
+                },
+            ],
+        },
+        cookies=cookies,
+    )
+    recipe_id = recipe.json()["id"]
+
+    cost = await client.get(f"/api/v1/recipes/{recipe_id}/cost", cookies=cookies)
+    assert cost.status_code == 200
+    body = cost.json()
+    assert body["is_complete"] is False
+    assert body["total_cost_minor"] is None
+    assert body["margin_minor"] is None

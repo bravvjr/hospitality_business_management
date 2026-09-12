@@ -80,6 +80,8 @@ class InventoryService:
             reorder_level_base=payload.reorder_level_base,
             unit_price_minor=payload.unit_price_minor,
             currency=payload.currency.upper() if payload.currency else None,
+            unit_cost_minor=payload.unit_cost_minor,
+            cost_currency=payload.cost_currency.upper() if payload.cost_currency else None,
         )
         await self._repo.add(product)
         await self._repo.flush()
@@ -128,6 +130,10 @@ class InventoryService:
             product.unit_price_minor = payload.unit_price_minor
         if payload.currency is not None:
             product.currency = payload.currency.upper()
+        if payload.unit_cost_minor is not None:
+            product.unit_cost_minor = payload.unit_cost_minor
+        if payload.cost_currency is not None:
+            product.cost_currency = payload.cost_currency.upper()
         if payload.status is not None:
             product.status = payload.status
 
