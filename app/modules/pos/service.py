@@ -232,7 +232,6 @@ class PosService:
                 consumed = await self._recipes.consume_for_sale_line(
                     tenant_id=tenant_id,
                     actor_user_id=actor_user_id,
-                    order_id=order.id,
                     order_item_id=item.id,
                     product_id=item.product_id,
                     quantity=Decimal(item.quantity),

@@ -194,7 +194,6 @@ class RecipeService:
         *,
         tenant_id: uuid.UUID,
         actor_user_id: uuid.UUID,
-        order_id: uuid.UUID,
         order_item_id: uuid.UUID,
         product_id: uuid.UUID,
         quantity: Decimal,
