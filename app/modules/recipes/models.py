@@ -1,7 +1,8 @@
 """Recipe / BOM models (ADR-005 Phase 2).
 
 A recipe links a sellable product (meal) to ingredient lines with quantities
-in recipe units. Automated consumption on POS sale is wired in a follow-up slice.
+in recipe units. POS sale completion deducts ingredients when an active recipe
+exists (Phase 2b); otherwise the sold product is deducted directly.
 """
 import uuid
 from decimal import Decimal

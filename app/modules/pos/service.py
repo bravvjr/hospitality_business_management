@@ -19,6 +19,7 @@ from app.modules.pos.schemas import (
     SaleReceiptPaymentRead,
     SaleReceiptRead,
 )
+from app.modules.recipes.service import RecipeService
 from app.modules.tenant.repository import TenantRepository
 
 
@@ -49,6 +50,7 @@ class PosService:
         self._session = session
         self._repo = PosRepository(session)
         self._inventory = InventoryService(session)
+        self._recipes = RecipeService(session)
         self._tenants = TenantRepository(session)
 
     async def create_order(
@@ -227,16 +229,29 @@ class PosService:
         # Deduct inventory for each line (same DB transaction).
         try:
             for item in order.items:
-                await self._inventory.record_sale_deduction(
+                consumed = await self._recipes.consume_for_sale_line(
                     tenant_id=tenant_id,
                     actor_user_id=actor_user_id,
+                    order_id=order.id,
+                    order_item_id=item.id,
                     product_id=item.product_id,
                     quantity=Decimal(item.quantity),
-                    unit_id=item.unit_id,
+                    to_base_factor_snapshot=Decimal(item.to_base_factor_snapshot),
+                    inventory=self._inventory,
                     source_document_id=str(order.id),
-                    idempotency_key=f"sale:{order.id}:{item.id}",
                     commit=False,
                 )
+                if not consumed:
+                    await self._inventory.record_sale_deduction(
+                        tenant_id=tenant_id,
+                        actor_user_id=actor_user_id,
+                        product_id=item.product_id,
+                        quantity=Decimal(item.quantity),
+                        unit_id=item.unit_id,
+                        source_document_id=str(order.id),
+                        idempotency_key=f"sale:{order.id}:{item.id}",
+                        commit=False,
+                    )
         except InventoryError as exc:
             await self._session.rollback()
             raise PosError(str(exc)) from exc
